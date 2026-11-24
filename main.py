@@ -33,11 +33,12 @@ GAIN = (22, 101, 52)
 RED_ON = (234, 96, 96)
 GAIN_ON = (104, 208, 136)
 STATUS_COL = {"REPORTED": TEAL, "CLAIM": RED, "ONGOING": INK}
-LAND_FILL = (207, 199, 186)
-LAND_DARK = (188, 178, 165)
-COAST_INK = (85, 91, 97)
+LAND_FILL = (214, 206, 192)
+LAND_DARK = (150, 140, 124)
+COAST_INK = (70, 76, 82)
 GRAT = (200, 196, 186)
 HATCH = (216, 207, 196)
+SEA_HATCH = (232, 226, 214)
 AXIS = (168, 162, 150)
 AXIS_STRONG = (137, 130, 119)
 CRISIS = (179, 27, 27)
@@ -391,21 +392,19 @@ def ring(buf, cx, cy, r, c):
              round(cx + r * math.cos(a1)), round(cy + r * math.sin(a1)), c)
 
 def world(buf):
-    """Natural Earth coastlines on paper ocean, with land fill and keyline."""
+    """Engraved atlas field: hatched sea, toned land, graticule, coast."""
     fill_rect(buf, 712, 676, 278, 132, PAPER)
-    for gx in range(712, 990, 14):
-        line(buf, gx, 676, gx + 12, 688, HATCH)
-        line(buf, gx + 4, 676, gx + 16, 688, HATCH)
-    largest = sorted(range(len(COAST)), key=lambda i: len(COAST[i]),
-                     reverse=True)[:3]
-    for ring_index, coast in enumerate(COAST):
+    for gy in range(676, 809, 5):
+        line(buf, 712, gy, 989, gy, SEA_HATCH)
+    for coast in COAST:
         pts = [(712 + px * 276 / 1000, 676 + py * 132 / 1000)
                for px, py in coast]
         hits_by_row = {}
         for i in range(len(pts)):
             ax, ay = pts[i]
             bx, by = pts[(i + 1) % len(pts)]
-            lo, hi = int(max(676, min(ay, by))), int(min(808, max(ay, by)))
+            lo = int(max(676, min(ay, by)))
+            hi = int(min(808, max(ay, by)))
             for yy in range(lo, hi + 1):
                 if (ay <= yy < by) or (by <= yy < ay):
                     hits_by_row.setdefault(yy, []).append(
@@ -418,9 +417,17 @@ def world(buf):
                 if b <= a:
                     continue
                 fill_rect(buf, a, yy, b - a + 1, 1, LAND_FILL)
-                if ring_index in largest and b - a > 4:
+                if b - a > 4:
                     fill_rect(buf, a + 2, yy, 1, 1, LAND_DARK)
                     fill_rect(buf, b - 2, yy, 1, 1, LAND_DARK)
+    line(buf, 712, 742, 989, 742, AXIS)
+    line(buf, 850, 676, 850, 807, AXIS)
+    for gy in (698, 764):
+        for gx in range(714, 989, 6):
+            line(buf, gx, gy, min(gx + 2, 990), gy, GRAT)
+    for gx in (758, 919):
+        for gy in range(678, 807, 6):
+            line(buf, gx, gy, gx, min(gy + 2, 808), GRAT)
     for coast in COAST:
         pts = [(round(712 + px * 276 / 1000), round(676 + py * 132 / 1000))
                for px, py in coast]
@@ -428,12 +435,6 @@ def world(buf):
             ax, ay = pts[i]
             bx, by = pts[(i + 1) % len(pts)]
             line(buf, ax, ay, bx, by, COAST_INK)
-    for gy in (688, 736, 784):
-        for gx in range(714, 989, 6):
-            line(buf, gx, gy, min(gx + 2, 990), gy, GRAT)
-    for gx in (754, 850, 946):
-        for gy in range(678, 807, 6):
-            line(buf, gx, gy, gx, min(gy + 2, 808), GRAT)
 
 
 PINS = (("banten", "1", CRISIS), ("antalya", "2", DIPLO),
@@ -464,18 +465,19 @@ def draw_map(buf):
          "map-scale", xlim=x + w - 6, ylim=y + 20)
     fill_rect(buf, x + 6, y + 22, w - 12, 1, RULE)
     world(buf)
-    for label, lx, ly in (("60N", 714, 680), ("0", 714, 728),
-                          ("30S", 714, 776)):
-        text(buf, label, lx, ly, "sans_8", TEXT, "map-lat-%s" % label,
-             xlim=lx + 30, ylim=ly + 9)
-    for label, lx in (("120W", 746), ("0", 842), ("90E", 938)):
-        text(buf, label, lx, 668, "sans_8", TEXT, "map-lon-%s" % label,
-             xlim=lx + 30, ylim=677)
+    for label, lx, ly in (("60N", 714, 688), ("0", 714, 730),
+                          ("30S", 714, 752)):
+        text(buf, label, lx, ly, "sans_7", TEXT, "map-lat-%s" % label,
+             xlim=lx + 26, ylim=ly + 9)
+    for label, lx in (("120W", 756), ("0", 846), ("90E", 916)):
+        text(buf, label, lx, 668, "sans_7", TEXT, "map-lon-%s" % label,
+             xlim=lx + 27, ylim=677)
     line(buf, 982, 672, 982, 680, INK)
-    line(buf, 979, 676, 982, 672, INK)
-    line(buf, 985, 676, 982, 672, INK)
-    text(buf, "N", 977, 682, "sans_8", TEXT, "map-north",
-         xlim=990, ylim=692)
+    line(buf, 978, 676, 986, 676, INK)
+    line(buf, 980, 674, 984, 678, INK)
+    line(buf, 984, 674, 980, 678, INK)
+    text(buf, "N", 978, 682, "sans_7", TEXT, "map-north",
+         xlim=990, ylim=691)
     visible = 5
     for i, (place, num, col) in enumerate(PINS):
         px, py = PLACES[place]
@@ -495,9 +497,16 @@ def draw_map(buf):
             line(buf, elbow_x, hy, elbow_x, plate_y + 5, INK)
             line(buf, plate_x + plate_w // 2, plate_y + 5,
                  elbow_x, plate_y + 5, INK)
-        disc(buf, ex, ey, 2, INK)
-        disc(buf, hx, hy, 6, PAPER)
-        disc(buf, hx, hy, 4, col)
+        disc(buf, ex, ey, 1, INK)
+        disc(buf, hx, hy, 5, PAPER)
+        for k in range(8):
+            a0 = 2 * math.pi * k / 8 + 0.08
+            a1 = 2 * math.pi * (k + 1) / 8 - 0.08
+            line(buf, round(hx + 4 * math.cos(a0)),
+                 round(hy + 4 * math.sin(a0)),
+                 round(hx + 4 * math.cos(a1)),
+                 round(hy + 4 * math.sin(a1)), INK)
+        disc(buf, hx, hy, 3, col)
         text(buf, num, hx - 2, hy - 3, "sans_8", PAPER, "pin-%d" % i,
              xlim=hx + 6, ylim=hy + 7)
     boxes = []
@@ -537,45 +546,59 @@ def draw_map(buf):
 
 
 def market_path(buf):
-    """Shaded five-day market path, shifted below the map for clear spacing."""
-    pts = [(708, 839), (730, 843), (757, 852), (782, 847),
-           (807, 859), (832, 865), (862, 861), (892, 871)]
-    base = 872
-    for x in range(708, 893):
+    """Framed area chart with a horizontal engraved fill under the series."""
+    pts = [(708, 837), (730, 840), (757, 848), (782, 844),
+           (807, 855), (832, 858), (862, 855), (886, 859)]
+    base = 866
+    ys = []
+    for x in range(708, 887):
         for i in range(len(pts) - 1):
             if pts[i][0] <= x <= pts[i + 1][0]:
                 x0, y0 = pts[i]
                 x1, y1 = pts[i + 1]
-                y = round(y0 + (y1 - y0) * (x - x0) / (x1 - x0))
-                if x % 2 == 0:
-                    line(buf, x, y, x, base, TINT)
+                ys.append(round(y0 + (y1 - y0) * (x - x0) / (x1 - x0)))
                 break
-    line(buf, 706, base, 896, base, AXIS)
-    for tick_x in (708, 892):
-        line(buf, tick_x, base - 3, tick_x, base + 3, AXIS)
+    for hy in range(838, base, 3):
+        run = None
+        for x, sy in zip(range(708, 887), ys):
+            if sy <= hy:
+                if run is None:
+                    run = x
+            elif run is not None:
+                line(buf, run, hy, x - 1, hy, HATCH)
+                run = None
+        if run is not None:
+            line(buf, run, hy, 886, hy, HATCH)
+    line(buf, 706, 826, 706, base, AXIS_STRONG)
+    line(buf, 706, base, 896, base, AXIS_STRONG)
+    for tx in (708, 794, 892):
+        line(buf, tx, base - 3, tx, base + 3, AXIS_STRONG)
     for i in range(len(pts) - 1):
         x0, y0 = pts[i]
         x1, y1 = pts[i + 1]
         line(buf, x0, y0, x1, y1, CRISIS)
         line(buf, x0, y0 + 1, x1, y1 + 1, CRISIS)
-    ring(buf, 892, 871, 5, CRISIS)
-    disc(buf, 892, 871, 2, CRISIS)
+    fill_rect(buf, 881, 853, 11, 11, PAPER)
+    ring(buf, 886, 859, 3, CRISIS)
+    disc(buf, 886, 859, 2, CRISIS)
     for x, label in ((708, "D1"), (794, "D3"), (876, "D5")):
-        text(buf, label, x, 875, "sans_8", TEXT, "path-tick-%s" % label,
-             xlim=x + 18, ylim=886)
-    text(buf, "5-DAY MOVE", 708, 826, "sans_8", MID, "path-title",
-         xlim=800, ylim=837)
-    text(buf, "-3.70%", 828, 826, "sans_8", CRISIS, "path-extreme",
-         xlim=896, ylim=836)
-    line(buf, 860, 836, 890, 867, CRISIS)
+        text(buf, label, x, 869, "sans_7", TEXT, "path-tick-%s" % label,
+             xlim=x + 14, ylim=878)
+    text(buf, "5-DAY MOVE", 712, 826, "sans_7", MID, "path-title",
+         xlim=780, ylim=835)
+    text(buf, "-3.70%", 828, 826, "sans_7", CRISIS, "path-extreme",
+         xlim=896, ylim=835)
+    text(buf, "S&P 500 CLOSE · FRI 20 NOV", 708, 880, "sans_7", TEXT,
+         "path-caption", xlim=862, ylim=889)
 
 
 def ruled_bars(buf, status):
-    """Three ruled status bars using grounded story counts."""
+    """Framed status chart with two-pixel series and a grounded count axis."""
     x, y = 904, 842
-    text(buf, "STATUS", x, 826, "serif_15", MID, "bar-title",
-         xlim=x + 80, ylim=843)
-    line(buf, x, y, x, y + 55, INK)
+    text(buf, "STATUS", x + 6, 826, "serif_15", MID, "bar-title",
+         xlim=x + 86, ylim=843)
+    line(buf, x, 826, x, 896, INK)
+    line(buf, x, 896, x + 80, 896, INK)
     keys = ("REPORTED", "CLAIM", "ONGOING")
     cols = (CRISIS, INK, TEAL)
     top = max(status[key] for key in keys)
@@ -583,108 +606,71 @@ def ruled_bars(buf, status):
         count = status[key]
         width = max(10, round(52 * count / top))
         by = y + 4 + i * 14
-        fill_rect(buf, x + 2, by, width, 9, cols[i])
+        fill_rect(buf, x + 2, by, width, 7, TINT)
+        fill_rect(buf, x + 2, by, width, 2, cols[i])
         fill_rect(buf, x + 2 + width, by, 1, 9, CREAM)
         text(buf, str(count), x + 62, by - 2, "sans_10", cols[i],
              "bar-val-%d" % i, xlim=x + 80, ylim=by + 12)
-    ring(buf, x + 48, y + 8, 6, CRISIS)
-    for n in range(0, top + 1, 2):
-        text(buf, str(n), x + 2 + n * 13, 886, "sans_8", TEXT,
-             "bar-axis-%d" % n, xlim=x + 80, ylim=896)
+    for n in (0, top // 2, top):
+        tx = x + 2 + n * 13
+        line(buf, tx, 896, tx, 900, AXIS_STRONG)
+        text(buf, str(n), tx - 2, 900, "sans_7", TEXT,
+             "bar-tick-%d" % n, xlim=tx + 10, ylim=909)
+    text(buf, "STORY MIX", x, 914, "sans_7", TEXT,
+         "bar-caption", xlim=x + 80, ylim=923)
 
 
 
 
 
 def spot(buf, x, y, kind, col):
-    """Open keyline spot illustrations, one per story card."""
-    if kind == "factory":
-        for i in (0, 14, 28):
-            fill_rect(buf, x + 6 + i, y + 20, 10, 42, PAPER)
-            border(buf, x + 6 + i, y + 20, 10, 42, col, reg=False)
-            line(buf, x + 6 + i, y + 20, x + 16 + i, y + 20, col)
-        line(buf, x + 2, y + 62, x + 60, y + 62, col)
-        line(buf, x + 4, y + 58, x + 58, y + 58, col)
-        line(buf, x + 8, y + 12, x + 14, y + 6, RED)
-        line(buf, x + 12, y + 14, x + 18, y + 8, RED)
-        line(buf, x + 22, y + 14, x + 28, y + 6, RED)
-        line(buf, x + 26, y + 16, x + 32, y + 8, RED)
-    elif kind == "treaty":
-        fill_rect(buf, x + 8, y + 8, 42, 52, CREAM)
-        border(buf, x + 8, y + 8, 42, 52, col, reg=False)
-        for r in (18, 26, 34, 42):
-            fill_rect(buf, x + 14, y + r, 28, 1, col)
-        fill_rect(buf, x + 42, y + 8, 8, 8, PAPER)
-        line(buf, x + 42, y + 16, x + 50, y + 8, col)
-        line(buf, x + 36, y + 48, x + 48, y + 38, RED)
-        line(buf, x + 38, y + 52, x + 50, y + 42, RED)
-    elif kind == "climate":
-        disc(buf, x + 48, y + 10, 6, AMBER)
-        for row, dy in enumerate((30, 38, 46)):
-            pts = ((x + 4, y + dy), (x + 18, y + dy - 5),
-                   (x + 32, y + dy), (x + 46, y + dy - 5),
-                   (x + 58, y + dy))
-            for i in range(len(pts) - 1):
-                line(buf, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1],
-                     col if row == 0 else DEEP)
-    elif kind == "ship":
+    """Open keyline figures: outline first, interior detail, one accent fill."""
+    if kind == "ship":
         fill_rect(buf, x + 8, y + 38, 44, 8, PAPER)
         hull = ((4, 38), (10, 46), (50, 46), (56, 38), (4, 38))
         for i in range(len(hull) - 1):
             x0, y0 = hull[i]
             x1, y1 = hull[i + 1]
             line(buf, x + x0, y + y0, x + x1, y + y1, col)
-        fill_rect(buf, x + 16, y + 30, 12, 8, PAPER)
-        border(buf, x + 16, y + 30, 12, 8, col, reg=False)
-        fill_rect(buf, x + 32, y + 26, 12, 12, PAPER)
-        border(buf, x + 32, y + 26, 12, 12, col, reg=False)
-        fill_rect(buf, x + 28, y + 16, 5, 12, CREAM)
-        border(buf, x + 28, y + 16, 5, 12, col, reg=False)
-        line(buf, x + 28, y + 16, x + 33, y + 16, col)
-        line(buf, x + 33, y + 18, x + 40, y + 12, RED)
-        line(buf, x + 30, y + 30, x + 30, y + 10, col)
-        line(buf, x + 30, y + 12, x + 44, y + 26, CREAM)
-        line(buf, x + 29, y + 12, x + 18, y + 26, CREAM)
+        fill_rect(buf, x + 18, y + 30, 12, 8, PAPER)
+        border(buf, x + 18, y + 30, 12, 8, col, reg=False)
+        fill_rect(buf, x + 34, y + 26, 12, 12, PAPER)
+        border(buf, x + 34, y + 26, 12, 12, col, reg=False)
+        line(buf, x + 30, y + 26, x + 30, y + 12, col)
+        line(buf, x + 30, y + 12, x + 42, y + 18, col)
+        fill_rect(buf, x + 28, y + 20, 4, 4, RED)
         for dy in (52, 56, 60):
-            wave = ((2, dy), (20, dy - 3), (40, dy), (58, dy - 2))
-            for i in range(len(wave) - 1):
-                line(buf, x + wave[i][0], y + wave[i][1],
-                     x + wave[i + 1][0], y + wave[i + 1][1], DEEP)
-        for px in (20, 40):
-            disc(buf, x + px, y + 42, 1, AMBER)
-
+            line(buf, x + 2, y + dy, x + 20, y + dy - 3, col)
+            line(buf, x + 20, y + dy - 3, x + 58, y + dy - 1, col)
     elif kind == "skyline":
-        for bx, bw, top, hgt, edge in ((4, 14, 32, 28, INK),
-                                       (20, 16, 18, 42, DEEP),
-                                       (38, 14, 26, 34, TEXT)):
+        for bx, bw, top, hgt in ((4, 14, 32, 28), (20, 16, 18, 42),
+                                 (38, 14, 26, 34)):
             fill_rect(buf, x + bx, y + top, bw, hgt, PAPER)
-            border(buf, x + bx, y + top, bw, hgt, edge, reg=False)
-            line(buf, x + bx, y + top, x + bx + bw, y + top, edge)
-        for wx, wy in ((8, 38), (8, 48), (24, 26), (28, 36),
-                       (42, 32), (44, 44)):
-            fill_rect(buf, x + wx, y + wy, 3, 3, AMBER)
-        line(buf, x + 28, y + 18, x + 28, y + 6, INK)
-        line(buf, x + 28, y + 6, x + 40, y + 10, RED)
-        fill_rect(buf, x + 2, y + 60, 56, 3, PAPER)
-        border(buf, x + 2, y + 60, 56, 3, col, reg=False)
+            border(buf, x + bx, y + top, bw, hgt, col, reg=False)
         line(buf, x + 2, y + 60, x + 58, y + 60, col)
-
+        for dy in (36, 48):
+            line(buf, x + 8, y + dy, x + 48, y + dy, col)
+        for wx in (10, 26, 42):
+            line(buf, x + wx, y + 28, x + wx, y + 54, col)
+        line(buf, x + 28, y + 18, x + 28, y + 10, col)
+        fill_rect(buf, x + 26, y + 6, 4, 4, RED)
     elif kind == "chart":
-        text(buf, "5D", x + 2, y, "serif_15", MID, "spot-chart-title",
-             xlim=x + 24, ylim=y + 18)
-        line(buf, x + 4, y + 18, x + 4, y + 68, col)
-        line(buf, x + 4, y + 68, x + 58, y + 68, col)
-        line(buf, x + 6, y + 26, x + 20, y + 38, RED)
-        line(buf, x + 20, y + 38, x + 34, y + 34, RED)
-        line(buf, x + 34, y + 34, x + 54, y + 54, RED)
-        for dx, dy in ((6, 26), (20, 38), (34, 34), (54, 54)):
-            disc(buf, x + dx, y + dy, 2, CREAM)
-            disc(buf, x + dx, y + dy, 1, RED)
-        ring(buf, x + 54, y + 54, 3, CRISIS)
+        line(buf, x + 4, y + 18, x + 4, y + 66, col)
+        line(buf, x + 4, y + 66, x + 58, y + 66, col)
+        line(buf, x + 4, y + 34, x + 58, y + 34, GRAT)
+        line(buf, x + 4, y + 52, x + 58, y + 52, GRAT)
+        series = ((6, 26), (20, 38), (34, 34), (54, 54))
+        for i in range(len(series) - 1):
+            x0, y0 = series[i]
+            x1, y1 = series[i + 1]
+            line(buf, x + x0, y + y0, x + x1, y + y1, col)
+        for dx, dy in series:
+            disc(buf, x + dx, y + dy, 2, PAPER)
+            disc(buf, x + dx, y + dy, 1, col)
+        fill_rect(buf, x + 52, y + 52, 4, 4, RED)
         for dx, label in ((4, "D1"), (28, "D3"), (46, "D5")):
-            text(buf, label, x + dx, y + 68, "sans_8", TEXT,
-                 "spot-chart-%s" % label, xlim=x + dx + 14, ylim=y + 77)
-
+            text(buf, label, x + dx, y + 68, "sans_7", TEXT,
+                 "spot-chart-%s" % label, xlim=x + dx + 12, ylim=y + 77)
     elif kind == "tower":
         fill_rect(buf, x + 18, y + 18, 22, 44, PAPER)
         border(buf, x + 18, y + 18, 22, 44, col, reg=False)
@@ -692,7 +678,12 @@ def spot(buf, x, y, kind, col):
         border(buf, x + 14, y + 12, 30, 6, col, reg=False)
         line(buf, x + 6, y + 62, x + 54, y + 62, col)
         for dy in (26, 36, 46):
-            line(buf, x + 20, y + dy, x + 38, y + dy - 4, RED)
+            line(buf, x + 22, y + dy, x + 38, y + dy - 4, col)
+        for dy in (30, 40, 50):
+            line(buf, x + 42, y + dy, x + 50, y + dy - 3, col)
+        line(buf, x + 46, y + 10, x + 48, y + 4, col)
+        line(buf, x + 48, y + 12, x + 50, y + 8, col)
+        fill_rect(buf, x + 38, y + 22, 4, 6, RED)
 def arrow(buf, x, y, up, c):
     if up:
         line(buf, x, y + 2, x + 1, y, c)
@@ -741,16 +732,17 @@ def draw_masthead(buf, n):
     text(buf, "reported Monday 23 November 2026", 34, 111,
          "serifbold_15", CREAM, "dateline", xlim=400, slant=6)
     mx = 640
-    text(buf, str(n), mx, 44, "serifbold_24", RED_ON, "mast-n",
-         xlim=mx + 32, ylim=72)
-    text(buf, "STORIES", mx + 36, 52, "sans_10", CREAM, "mast-stories",
-         xlim=mx + 106, ylim=72)
-    fill_rect(buf, mx + 110, 44, 1, 24, RULE)
-    text(buf, "6", mx + 126, 44, "serifbold_24", RED_ON, "mast-sources",
-         xlim=mx + 156, ylim=72)
-    text(buf, "SOURCES", mx + 160, 52, "sans_10", CREAM, "mast-source-label",
-         xlim=mx + 240, ylim=72)
-    fill_rect(buf, mx, 76, 340, 1, RULE)
+    figures = ((n, "STORIES"), (len(SOURCES), "SOURCES"),
+               (len(PINS), "PINS"), (len(LEADS), "LEADS"))
+    for i, (value, label) in enumerate(figures):
+        fx = 640 + i * 80
+        text(buf, str(value), fx, 34, "serifbold_28", RED_ON,
+             "mast-figure-%d" % i, xlim=fx + 72, ylim=69)
+        text(buf, label, fx, 70, "sans_8", CREAM, "mast-caption-%d" % i,
+             xlim=fx + 78, ylim=80)
+        if i:
+            fill_rect(buf, fx - 2, 38, 1, 42, RULE)
+    fill_rect(buf, 640, 86, 340, 1, RULE)
     text(buf, "REUTERS · AP · AL JAZEERA", mx, 96, "sans_10", CREAM,
          "mast-src-1", xlim=990, ylim=116)
     text(buf, "THE HINDU · DETIK · CNBC", mx, 116, "sans_10", CREAM,
