@@ -96,11 +96,7 @@ RAIL_XS = frozenset((28, 32, 38, 56, 252, 282, 472, 526, 640, 682, 770))
 OFF_RAIL = 0
 BREAK_BALANCE = 0
 RAIL_LINE = (156, 660)
-SYNTHESIS = ("Rescuers search the fire-hit factory as COP31 collapses "
-             "and Asian markets sell off.")
-SYNTHESIS_WORDS = len(SYNTHESIS.split())
-LEAD_TOP = 162
-SECONDARY_TOP = 430
+LEAD_HEAD_PX = 36
 BRIEF_LEAD = 0
 RULE_CLEAR = 0
 
@@ -897,7 +893,7 @@ def draw_lead(buf, edge, lead, ncol):
     if ncol == 0:
         tx = 56
         head_lim = 600
-        key = "serifbold_30"
+        key = "serifbold_%d" % LEAD_HEAD_PX
         head_y = (204, 248)
         body_y, detail_y, foot_y = 286, 330, 350
         body_cols, body_w = (56, 336), 268
@@ -1149,13 +1145,6 @@ def main():
         status[item["status"]] = status.get(item["status"], 0) + 1
 
     draw_masthead(buf, n)
-    sy0, sty = 132, 136
-    sbot = ink_rows("serif_10", SYNTHESIS)[1]
-    sheight = sty + sbot + 7 - sy0
-    fill_rect(buf, 28, sy0, 968, sheight, CARD)
-    fill_rect(buf, 28, sy0, 968, 2, TEAL)
-    text(buf, SYNTHESIS, 32, sty, "serif_10", INK, "synthesis",
-         xlim=996, ylim=sty + sbot + 1)
     fill_rect(buf, 28, 162, 968, 230, PAPER)
     border(buf, 28, 162, 968, 230, RULE)
     draw_lead(buf, (32, 628), LEADS[0], 0)
@@ -1193,7 +1182,7 @@ def main():
     assert ORPHANS == 0, ORPHANS
     assert OFF_RAIL == 0, OFF_RAIL
     assert BREAK_BALANCE <= 55, BREAK_BALANCE
-    assert 12 <= SYNTHESIS_WORDS <= 18, SYNTHESIS_WORDS
+    assert LEAD_HEAD_PX == 36, LEAD_HEAD_PX
     assert MAP_LABELS == 5, MAP_LABELS
     assert n >= 22, n
     assert BRIEF_LEAD >= 5, BRIEF_LEAD
@@ -1235,9 +1224,7 @@ def main():
     print("OFF_RAIL %d" % OFF_RAIL)
     print("BREAK_BALANCE %d" % BREAK_BALANCE)
     print("RAIL_LINE %d-%d" % RAIL_LINE)
-    print("SYNTHESIS_WORDS %d" % SYNTHESIS_WORDS)
-    print("LEAD_TOP %d" % LEAD_TOP)
-    print("SECONDARY_TOP %d" % SECONDARY_TOP)
+    print("LEAD_HEAD_PX %d" % LEAD_HEAD_PX)
     print("BRIEF_LEAD %d" % BRIEF_LEAD)
     print("BRIEF_GAP %d" % BRIEF_GAP)
     print("RULE_CLEAR %d" % RULE_CLEAR)
