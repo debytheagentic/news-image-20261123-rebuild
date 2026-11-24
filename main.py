@@ -49,6 +49,15 @@ BRIEF_PITCH = 9
 BRIEF_GAP = 7
 BRIEF_ROW_PITCH = 44
 TRACKING_OVERRIDES = 0
+SCALE_LEAD, SCALE_BODY = 34, 10
+ORPHANS = 0
+TRACK_STATES = set()
+TRACK_VARIANTS = 0
+SECTION_GAP = 0
+PRE_TICKER_GAP = 0
+MARKET_TOP, MARKET_BOTTOM = 880, 944
+SECTION_BANDS = ((24, 156), (176, 374), (392, 420),
+                 (438, 642), (660, MARKET_BOTTOM), (972, 990))
 
 BOXES = []
 RULES = []
@@ -58,7 +67,7 @@ EDGE_MAX_Y = 0
 MONO_USES = set()
 WEIGHTS = {"primary": 0, "secondary": 0, "tertiary": 0}
 TICKER_LAST_Y = 0
-ALSO_TOP, ALSO_BOT = 398, 434
+ALSO_TOP, ALSO_BOT = 392, 420
 MAP_LABEL_GAP = 0
 MAP_LABELS = 0
 MAP_PANEL = (536, 642, 460, 300)
@@ -208,7 +217,7 @@ def border(buf, x, y, w, h, c, reg=True):
         RULES.append((x + w - 1, y, x + w, y + h))
 
 
-def blit(buf, s, x, y, key, fg, top, bot, slant=0):
+def blit(buf, s, x, y, key, fg, top, bot, slant=0, tracking=0):
     h, stride, widths, offsets, mask = font(key)
     fr, fg2, fb = fg
     pen = x
@@ -232,7 +241,7 @@ def blit(buf, s, x, y, key, fg, top, bot, slant=0):
                 buf[j] = (fr * a + buf[j] * (255 - a) + 127) // 255
                 buf[j + 1] = (fg2 * a + buf[j + 1] * (255 - a) + 127) // 255
                 buf[j + 2] = (fb * a + buf[j + 2] * (255 - a) + 127) // 255
-        pen += widths[gi]
+        pen += widths[gi] + tracking
     return pen - x
 
 
@@ -258,10 +267,18 @@ def audit_fail(name, over):
     sys.exit(1)
 
 
-def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0):
+def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
+         tracking=0):
+    global TRACK_VARIANTS
     if not s:
         return 0
-    w = tw(key, s) + slant
+    if tracking not in (0, 1):
+        audit_fail(name, tracking)
+    if tracking and not (s.upper() == s and any(c.isalpha() for c in s)):
+        audit_fail(name, tracking)
+    TRACK_STATES.add(tracking)
+    TRACK_VARIANTS = len(TRACK_STATES)
+    w = tw(key, s) + slant + tracking * (len(s) - 1)
     if x < 28:
         audit_fail(name, 28 - x)
     if x + w > xlim:
@@ -286,7 +303,7 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0):
             print("OVERLAP %s vs %s" % (name, other))
             sys.exit(1)
     BOXES.append((name, box))
-    blit(buf, s, x, y, key, fg, top, bot, slant)
+    blit(buf, s, x, y, key, fg, top, bot, slant, tracking)
     return w
 
 
@@ -316,40 +333,51 @@ def value_text(buf, s, x, y, key, fg, name, xlim, ylim):
 
 
 def wrap(key, s, maxw):
-    lines, cur = [], ""
-    for word in s.split(" "):
-        trial = word if not cur else cur + " " + word
+    global ORPHANS
+    lines, cur = [], []
+    for word in s.split():
+        trial = " ".join(cur + [word])
         if not cur or tw(key, trial) <= maxw:
-            cur = trial
+            cur.append(word)
         else:
-            lines.append(cur)
-            cur = word
+            lines.append(" ".join(cur))
+            cur = [word]
     if cur:
-        lines.append(cur)
+        if (lines and len(cur) == 1 and
+                tw(key, cur[0]) < maxw * 0.4):
+            prev = lines[-1].split()
+            if len(prev) > 1 and tw(key, " ".join(prev[:-1])) <= maxw:
+                lines[-1] = " ".join(prev[:-1])
+                cur = [prev[-1] + " " + cur[0]]
+        if len(cur) == 1 and lines:
+            merged = lines[-1] + " " + cur[0]
+            if tw(key, merged) <= maxw:
+                lines[-1] = merged
+                cur = []
+        if cur:
+            lines.append(" ".join(cur))
+    if lines and len(lines[-1].split()) == 1 and (
+            tw(key, lines[-1]) < maxw * 0.4):
+        ORPHANS += 1
     return lines
 
 
 def balanced_wrap(key, s, maxw):
-    """Pick the space break whose two lines are closest in width."""
+    """Choose the space break whose two fitted lines are closest in width."""
     words = s.split()
-    if len(words) < 2:
-        return [s]
     best = None
     for i in range(1, len(words)):
         first, second = " ".join(words[:i]), " ".join(words[i:])
         wa, wb = tw(key, first), tw(key, second)
         if wa > maxw or wb > maxw:
             continue
-        if len(second.split()) == 1 and wb < maxw * 0.4:
+        if len(words[i:]) == 1 and wb < maxw * 0.4:
             continue
         ratio = min(wa, wb) / max(wa, wb)
         if best is None or ratio > best[0]:
             best = (ratio, first, second)
     if best is None:
-        lines = wrap(key, s, maxw)
-        if len(lines[-1].split()) == 1 and tw(key, lines[-1]) < maxw * 0.4:
-            BREAKS["orphans"] += 1
-        return lines
+        return wrap(key, s, maxw)
     if best[0] >= 0.85:
         BREAKS["balanced"] += 1
     return [best[1], best[2]]
@@ -788,16 +816,16 @@ def write_png(path, buf):
 def draw_masthead(buf, n):
     fill_rect(buf, 24, 24, 976, 132, INK)
     fill_rect(buf, 24, 24, 976, 12, (185, 151, 90))
-    fill_rect(buf, 32, 104, 340, 2, TEAL)
+    fill_rect(buf, 32, 92, 340, 2, TEAL)
     fill_rect(buf, 24, 152, 976, 3, RULE)
     fill_rect(buf, 24, 155, 976, 2, PAPER)
     fill_rect(buf, 24, 157, 976, 1, RULE)
-    text(buf, "WORLD IN ONE PAGE", 32, 32, "serifbold_48", CREAM, "masthead")
-    text(buf, "A DAY OF DISASTER, DIPLOMACY AND MARKETS", 34, 84,
-         "serifbold_15", CREAM, "mast-deck", xlim=620, ylim=108)
-    text(buf, "reported Monday 23 November 2026", 34, 111,
+    text(buf, "WORLD IN ONE PAGE", 32, 28, "serifbold_52", CREAM, "masthead")
+    text(buf, "A DAY OF DISASTER, DIPLOMACY AND MARKETS", 34, 96,
+         "serifbold_15", CREAM, "mast-deck", xlim=620, ylim=116)
+    text(buf, "reported Monday 23 November 2026", 34, 120,
          "serifbold_15", CREAM, "dateline", xlim=400, slant=6)
-    mx = 640
+    mx = 660
     text(buf, str(n), mx, 44, "serifbold_24", RED_ON, "mast-n",
          xlim=mx + 32, ylim=72)
     text(buf, "STORIES", mx + 36, 52, "sans_10", CREAM, "mast-stories",
@@ -818,54 +846,60 @@ def draw_masthead(buf, n):
 def draw_lead(buf, edge, lead, ncol):
     x, lim = edge
     if ncol == 0:
-        tx = 56
-        head_lim = 600
-        key = "serifbold_36"
-        head_y = (204, 248)
+        tx, head_lim = 56, 600
         body_y, detail_y, foot_y = 286, 330, 350
         body_cols, body_w = (56, 336), 268
         fill_rect(buf, 52, 186, 552, 182, PAPER)
         fill_rect(buf, tx, 186, 184, 3, CRISIS)
         kicker_y, place_y = 191, 193
     else:
-        tx = x
-        head_lim = lim - 24
-        key = "serifbold_28"
-        head_y = (202, 238)
-        body_y, detail_y, foot_y = 282, 347, 370
+        tx, head_lim = x, lim
+        body_y, detail_y, foot_y = 286, 340, 358
         body_cols, body_w = (tx,), lim - tx - 12
         fill_rect(buf, tx, 176, 96, 1, RULE)
         kicker_y, place_y = 182, 184
-    kw = tw("serif_15", lead["kicker"])
+    kw = tw("serif_15", lead["kicker"]) + len(lead["kicker"]) - 1
     text(buf, lead["kicker"], tx, kicker_y, "serif_15", MID,
-         "lead-kicker-%d" % ncol, xlim=tx + kw, ylim=kicker_y + 18)
+         "lead-kicker-%d" % ncol, xlim=tx + kw, ylim=kicker_y + 18,
+         tracking=1)
     text(buf, lead["place"], tx + kw + 8, place_y, "sans_10", TEXT,
          "lead-place-%d" % ncol, xlim=lim, ylim=place_y + 20)
-    lines = balanced_wrap(key, " ".join(lead["head"]), head_lim - tx)
-    if len(lines) > 2:
-        audit_fail("lead-head-%d" % ncol, len(lines) - 2)
+    lines = list(lead["head"])
+    if len(lines) != 2:
+        audit_fail("lead-head-%d" % ncol, abs(len(lines) - 2))
     for j, ln in enumerate(lines):
-        text(buf, ln, tx, head_y[j], key, INK,
+        text(buf, ln, tx, 202 + j * 44, "serifbold_34", INK,
              "lead-head-%d-%d" % (ncol, j), xlim=head_lim,
-             ylim=head_y[j] + (44 if ncol == 0 else 36))
-    parts = lead["context"].split(". ") if ncol == 0 else (lead["context"],)
+             ylim=246 + j * 44 + 44)
+    if ncol == 0:
+        first, second = lead["context"].split(". ", 1)
+        parts = (first + ".", second)
+    else:
+        parts = (lead["context"],)
     for col, (px, part) in enumerate(zip(body_cols, parts)):
-        body_lines = wrap("serifbold_15", part, body_w)
-        max_body = 2 if ncol == 0 else 3
-        if len(body_lines) > max_body:
+        drop = ncol == 0 and col == 0
+        source = part[1:] if drop else part
+        width = body_w - 28 if drop else body_w
+        body_lines = (balanced_wrap("sans_10", source, width) if drop
+                      else wrap("sans_10", source, width))
+        if len(body_lines) > 3:
             audit_fail("lead-body-%d-%d" % (ncol, col),
-                       len(body_lines) - max_body)
+                       len(body_lines) - 3)
+        if drop:
+            text(buf, part[0], px, body_y - 2, "serifbold_30", INK,
+                 "lead-drop-%d" % ncol, xlim=px + 28, ylim=body_y + 40)
         for j, ln in enumerate(body_lines):
-            ly = body_y + j * 20
-            text(buf, ln, px, ly, "serifbold_15", TEXT,
+            bx = px + (28 if drop and j < 2 else 0)
+            ly = body_y + j * 14
+            text(buf, ln, bx, ly, "sans_10", TEXT,
                  "lead-body-%d-%d-%d" % (ncol, col, j),
-                 xlim=px + body_w + 24, ylim=ly + 20)
-    text(buf, lead["detail"], tx, detail_y, "sans_12", TEXT,
-         "lead-detail-%d" % ncol, xlim=head_lim, ylim=detail_y + 20)
+                 xlim=bx + width + 4, ylim=ly + 14)
+    text(buf, lead["detail"], tx, detail_y, "sans_10", TEXT,
+         "lead-detail-%d" % ncol, xlim=head_lim, ylim=detail_y + 14)
     chip(buf, tx, foot_y, STATUS_COL[lead["status"]])
     text(buf, lead["source"] + " · " + lead["status"], tx + 12, foot_y,
          "sans_10", TEXT, "lead-foot-%d" % ncol,
-         xlim=head_lim, ylim=foot_y + 16)
+         xlim=head_lim, ylim=foot_y + 14)
 
 
 
@@ -943,17 +977,16 @@ def draw_briefs(buf):
 
 
 
-
 def draw_markets(buf):
     """Compact grounded index strip above the ticker."""
-    fill_rect(buf, 28, 890, 492, 44, CARD)
-    fill_rect(buf, 28, 890, 492, 1, INK)
-    fill_rect(buf, 28, 948, 492, 6, TEAL)
-    text(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 890, "serif_15", MID,
-         "markets-head", xlim=520, ylim=906)
+    fill_rect(buf, 28, MARKET_TOP, 492, 64, CARD)
+    fill_rect(buf, 28, MARKET_TOP, 492, 1, INK)
+    fill_rect(buf, 28, 938, 492, 6, TEAL)
+    text(buf, "MARKETS / FRI 20 NOV CLOSE", 28, MARKET_TOP,
+         "serifbold_20", MID, "markets-head", xlim=520, ylim=906)
     for i, (label, value, pct, up) in enumerate(TICKER):
         col, row = divmod(i, 3)
-        x, y = 28 + col * 164, 906 + row * 12
+        x, y = 28 + col * 164, 908 + row * 12
         c = GAIN if up else CRISIS
         text(buf, label, x, y, "sans_8", INK, "mkt-lab-%d" % i,
              xlim=x + 44, ylim=y + 10)
@@ -969,19 +1002,19 @@ def draw_markets(buf):
 
 def draw_wire(buf):
     """One ruled column with a fixed 18px right-aligned number gutter."""
-    text(buf, "ALSO REPORTED", 32, ALSO_TOP - 28, "serif_15", MID,
-         "wire-head", xlim=220, ylim=ALSO_TOP - 10)
+    text(buf, "ALSO REPORTED", 32, ALSO_TOP - 30, "serifbold_20", MID,
+         "wire-head", xlim=260, ylim=ALSO_TOP - 8)
     fill_rect(buf, 28, ALSO_TOP, 968, 1, RULE)
     for i in range(3):
         item = BRIEFS[15 + i]
-        y = ALSO_TOP + 6 + i * 10
-        nw = tw("sans_8", item["num"])
-        text(buf, item["num"], 50 - nw, y, "sans_8", TEXT,
-             "wire-val-%d" % (15 + i), xlim=50, ylim=y + 10)
+        y = ALSO_TOP + 4 + i * 8
+        nw = tw("sans_6", item["num"])
+        text(buf, item["num"], 50 - nw, y, "sans_6", TEXT,
+             "wire-val-%d" % (15 + i), xlim=50, ylim=y + 8)
         s = "%s %s · %s · %s" % (item["place"], item["head"],
                                  item["context"], item["source"])
-        text(buf, s, 54, y, "sans_8", TEXT,
-             "wire-%d" % (15 + i), xlim=996, ylim=y + 10)
+        text(buf, s, 54, y, "sans_6", TEXT,
+             "wire-%d" % (15 + i), xlim=996, ylim=y + 8)
 
 
 
@@ -1016,7 +1049,7 @@ def draw_ticker(buf):
             TICKER_LAST_Y, 976 + ink_rows("sans_8", pct)[1] + 1)
 
 def main():
-    global RULE_CLEAR
+    global RULE_CLEAR, ORPHANS, TRACK_VARIANTS, SECTION_GAP, PRE_TICKER_GAP
     buf = bytearray(bytes(PAPER) * (W * H))
 
     n = len(LEADS) + len(CARDS) + len(BRIEFS)
@@ -1029,19 +1062,26 @@ def main():
     fill_rect(buf, 24, 660, 682, 110, CARD)
     fill_rect(buf, 24, 660, 682, 8, TEAL)
     draw_lead(buf, (32, 628), LEADS[0], 0)
-    draw_lead(buf, (640, 996), LEADS[1], 1)
+    draw_lead(buf, (636, 996), LEADS[1], 1)
     draw_wire(buf)
-    fill_rect(buf, 24, 438, 976, 220, CARD)
+    fill_rect(buf, 24, 438, 976, 204, CARD)
     for i, card in enumerate(CARDS):
         draw_card(buf, 28 + i * 244, card, i)
-    fill_rect(buf, 24, 660, 496, 230, CARD)
+    fill_rect(buf, 24, 660, 496, 220, CARD)
     fill_rect(buf, 24, 660, 496, 8, TEAL)
     draw_briefs(buf)
     draw_map(buf)
     draw_pulse(buf, status)
     draw_markets(buf)
     draw_ticker(buf)
-    assert BRIEF_LEAD >= 5, BRIEF_LEAD
+    assert SCALE_LEAD / SCALE_BODY >= 3.0, (SCALE_LEAD, SCALE_BODY)
+    assert ORPHANS == 0, ORPHANS
+    assert TRACK_VARIANTS <= 2, TRACK_VARIANTS
+    SECTION_GAP = min(b[0] - a[1]
+                      for a, b in zip(SECTION_BANDS, SECTION_BANDS[1:]))
+    PRE_TICKER_GAP = SECTION_BANDS[-1][0] - MARKET_BOTTOM
+    assert SECTION_GAP >= 18, SECTION_GAP
+    assert PRE_TICKER_GAP >= 28, PRE_TICKER_GAP
     clear = 4096
     worst = None
     for rx0, ry0, rx1, ry1 in RULES:
@@ -1061,7 +1101,11 @@ def main():
     print("AUDIT ok blocks=%d overlaps=0" % len(BOXES))
     print("EDGE ok max_x=%d max_y=%d" % (EDGE_MAX_X, EDGE_MAX_Y))
     print("BRIEF_LEAD %d" % BRIEF_LEAD)
-    print("BRIEF_GAP %d" % BRIEF_GAP)
+    print("SCALE_LEAD %d SCALE_BODY %d" % (SCALE_LEAD, SCALE_BODY))
+    print("ORPHANS %d" % ORPHANS)
+    print("TRACK_VARIANTS %d" % TRACK_VARIANTS)
+    print("SECTION_GAP %d" % SECTION_GAP)
+    print("PRE_TICKER_GAP %d" % PRE_TICKER_GAP)
     print("RULE_CLEAR %d" % RULE_CLEAR)
     print("TRACKING_OVERRIDES %d" % TRACKING_OVERRIDES)
     print("MONO_USES %d" % len(MONO_USES))
