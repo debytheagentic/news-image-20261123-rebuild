@@ -56,8 +56,14 @@ TRACKING_OVERRIDES = 0
 
 BOXES = []
 RULES = []
+EDGE_BOXES = []
+EDGE_MAX_X = 0
+EDGE_MAX_Y = 0
 MONO_USES = set()
 WEIGHTS = {"primary": 0, "secondary": 0, "tertiary": 0}
+TICKER_LAST_Y = 0
+ALSO_TOP, ALSO_BOT = 398, 434
+MAP_LABEL_GAP = 0
 
 LEADS = [
     {"place": "CIKANDE, BANTEN", "kicker": "DISASTER",
@@ -177,6 +183,7 @@ def ink_rows(key, s):
 
 
 def fill_rect(buf, x, y, w, h, c):
+    edge_check("fill-%d-%d" % (x, y), (x, y, x + w, y + h))
     if w <= 0 or h <= 0:
         return
     cr, cg, cb = c
@@ -228,6 +235,22 @@ def blit(buf, s, x, y, key, fg, top, bot, slant=0):
 
 
 
+def edge_fail(name, over):
+    print("EDGE %s past canvas by %dpx" % (name, over))
+    sys.exit(1)
+
+
+def edge_check(name, box):
+    global EDGE_MAX_X, EDGE_MAX_Y
+    x0, y0, x1, y1 = box
+    over = max(24 - x0, 24 - y0, x1 - 1000, y1 - 1000)
+    if over > 0:
+        edge_fail(name, over)
+    EDGE_BOXES.append((name, box))
+    EDGE_MAX_X = max(EDGE_MAX_X, round(x1))
+    EDGE_MAX_Y = max(EDGE_MAX_Y, round(y1))
+
+
 def audit_fail(name, over):
     print("AUDIT %s over by %dpx" % (name, over))
     sys.exit(1)
@@ -247,6 +270,7 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0):
     if y + bot + 1 > ylim:
         audit_fail(name, y + bot + 1 - ylim)
     box = (x, y + top, x + w, y + bot + 1)
+    edge_check(name, box)
     if key.startswith("mono_"):
         MONO_USES.add("ticker" if name.startswith("tick-") else name)
     elif key.startswith("serifbold_"):
@@ -262,6 +286,30 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0):
     BOXES.append((name, box))
     blit(buf, s, x, y, key, fg, top, bot, slant)
     return w
+
+
+def split_num(s):
+    for suffix in ("K+", "TH", "%", "H", "+"):
+        if s.endswith(suffix) and len(s) > len(suffix):
+            return s[:-len(suffix)], suffix
+    if len(s) > 1 and s.startswith("M") and s[1].isdigit():
+        return s[1:], "M"
+    return s, ""
+
+
+def value_text(buf, s, x, y, key, fg, name, xlim, ylim):
+    val, unit = split_num(s)
+    vw = tw(key, val)
+    text(buf, val, x, y, key, fg, name + "-value",
+         xlim=min(x + vw, xlim), ylim=ylim)
+    end = x + vw
+    if unit:
+        end += 3
+        uw = tw(key, unit)
+        text(buf, unit, end, y, key, fg, name + "-unit",
+             xlim=min(end + uw, xlim), ylim=ylim)
+        end += uw
+    return end
 
 
 
@@ -376,7 +424,12 @@ PLATES = ((714, 752), (778, 752), (842, 752), (906, 752),
           (756, 766), (830, 766), (886, 766), (934, 766))
 
 
+def plate_width(place):
+    return tw("sans_8", place.upper()) + 6
+
+
 def draw_map(buf):
+    global MAP_LABEL_GAP
     x, y, w, h = 706, 642, 290, 172
     fill_rect(buf, x, y, w, h, PAPER)
     border(buf, x, y, w, h, RULE)
@@ -406,7 +459,7 @@ def draw_map(buf):
         dx, dy = PIN_OFFSETS[place]
         hx, hy = ex + dx, ey + dy
         plate_x, plate_y = PLATES[i]
-        plate_w = tw("sans_8", place.upper()) + 10
+        plate_w = plate_width(place)
         line(buf, ex, ey, hx, hy, INK)
         line(buf, hx, hy, plate_x + plate_w // 2, plate_y, INK)
         disc(buf, ex, ey, 2, INK)
@@ -414,13 +467,34 @@ def draw_map(buf):
         disc(buf, hx, hy, 4, col)
         text(buf, num, hx - 2, hy - 3, "sans_8", PAPER, "pin-%d" % i,
              xlim=hx + 6, ylim=hy + 7)
+    boxes = []
     for i, (place, num, col) in enumerate(PINS):
         plate_x, plate_y = PLATES[i]
-        plate_w = tw("sans_8", place.upper()) + 10
+        plate_w = plate_width(place)
+        boxes.append((place.upper(), plate_x, plate_y,
+                      plate_x + plate_w, plate_y + 10))
+    gap = 1024
+    pair = ("", "")
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            a, b = boxes[i], boxes[j]
+            dx = max(0, a[1] - b[3], b[1] - a[3])
+            dy = max(0, a[2] - b[4], b[2] - a[4])
+            if max(dx, dy) < gap:
+                gap = max(dx, dy)
+                pair = (a[0], b[0])
+    if gap < 4:
+        print("MAP_LABEL %s vs %s too close by %dpx"
+              % (pair[0], pair[1], 4 - gap))
+        sys.exit(1)
+    MAP_LABEL_GAP = gap
+    for i, (place, num, col) in enumerate(PINS):
+        plate_x, plate_y = PLATES[i]
+        plate_w = plate_width(place)
         fill_rect(buf, plate_x, plate_y, plate_w, 10, PAPER)
         border(buf, plate_x, plate_y, plate_w, 10, INK, reg=False)
-        text(buf, place.upper(), plate_x + 5, plate_y + 1, "sans_8", INK,
-             "plate-%d" % i, xlim=plate_x + plate_w - 4, ylim=plate_y + 10)
+        text(buf, place.upper(), plate_x + 3, plate_y + 1, "sans_8", INK,
+             "plate-%d" % i, xlim=plate_x + plate_w - 3, ylim=plate_y + 10)
 
 
 def market_path(buf):
@@ -618,11 +692,11 @@ def write_png(path, buf):
 
 
 def draw_masthead(buf, n):
-    fill_rect(buf, 0, 20, W, 136, INK)
-    fill_rect(buf, 0, 16, W, 2, INK)
-    fill_rect(buf, 0, 156, W, 3, INK)
-    fill_rect(buf, 0, 159, W, 2, PAPER)
-    fill_rect(buf, 0, 161, W, 1, RULE)
+    fill_rect(buf, 24, 24, 976, 132, INK)
+    fill_rect(buf, 24, 24, 976, 2, (185, 151, 90))
+    fill_rect(buf, 24, 152, 976, 3, RULE)
+    fill_rect(buf, 24, 155, 976, 2, PAPER)
+    fill_rect(buf, 24, 157, 976, 1, RULE)
     text(buf, "WORLD IN ONE PAGE", 32, 32, "serifbold_48", CREAM, "masthead")
     text(buf, "A DAY OF DISASTER, DIPLOMACY AND MARKETS", 34, 84,
          "serifbold_15", CREAM, "mast-deck", xlim=620, ylim=108)
@@ -678,12 +752,12 @@ def draw_lead(buf, edge, lead, ncol):
             ly = 282 + j * 22
             text(buf, ln, tx, ly, "serifbold_15", TEXT,
                  "lead-body-%d-%d" % (ncol, j), xlim=lim, ylim=ly + 20)
-    dy = 330 if ncol == 0 else 347
+    dy = 324 if ncol == 0 else 347
     text(buf, lead["detail"], tx, dy, "sans_12", TEXT,
          "lead-detail-%d" % ncol, xlim=lim, ylim=dy + 20)
-    chip(buf, tx, 382, STATUS_COL[lead["status"]])
-    text(buf, lead["source"] + " · " + lead["status"], tx + 12, 382,
-         "sans_10", TEXT, "lead-foot-%d" % ncol, xlim=lim, ylim=400)
+    chip(buf, tx, 370, STATUS_COL[lead["status"]])
+    text(buf, lead["source"] + " · " + lead["status"], tx + 12, 370,
+         "sans_10", TEXT, "lead-foot-%d" % ncol, xlim=lim, ylim=388)
 
 
 
@@ -698,9 +772,9 @@ def draw_card(buf, x, card, i):
     text_x = tx + 162
     text(buf, card["place"], tx, 447, "sans_10", INK, "card-place-%d" % i,
          xlim=lim, ylim=465)
-    text(buf, card["num"], tx, 476, "serifbold_15",
-         STATUS_COL[card["status"]], "card-num-%d" % i,
-         xlim=text_x, ylim=496)
+    value_text(buf, card["num"], tx, 476, "serifbold_15",
+               STATUS_COL[card["status"]], "card-num-%d" % i,
+               text_x, 496)
     spot(buf, art_x, 474, card["art"], INK)
     lines = wrap("serif_15", card["head"], 168)
     if len(lines) > 2:
@@ -735,8 +809,11 @@ def draw_briefs(buf):
              "brief-place-%d" % i, xlim=xlim, ylim=y + 13)
         text(buf, item["head"], x, y + BRIEF_PITCH, "sans_10", INK,
              "brief-head-%d" % i, xlim=xlim, ylim=y + 28)
-        detail = " · ".join((item["num"], item["context"], item["source"]))
-        text(buf, detail, x, y + 2 * BRIEF_PITCH, "sans_10", TEXT,
+        end = value_text(buf, item["num"], x, y + 2 * BRIEF_PITCH,
+                         "sans_10", TEXT, "brief-val-%d" % i,
+                         xlim, y + 44)
+        text(buf, " · " + " · ".join((item["context"], item["source"])),
+             end + 3, y + 2 * BRIEF_PITCH, "sans_10", TEXT,
              "brief-detail-%d" % i, xlim=xlim, ylim=y + 44)
 
 
@@ -744,7 +821,7 @@ def draw_briefs(buf):
 
 def draw_lead_briefs(buf):
     """Three overflow briefs in the wide lead's two-column deck field."""
-    slots = ((32, 347, 300), (32, 362, 300), (336, 347, 604))
+    slots = ((32, 342, 300), (32, 356, 300), (336, 342, 604))
     for i, (x, y, xlim) in enumerate(slots):
         item = BRIEFS[12 + i]
         s = "%s · %s %s · %s · %s" % (item["place"], item["head"],
@@ -755,36 +832,39 @@ def draw_lead_briefs(buf):
 
 def draw_markets(buf):
     """Compact grounded index strip above the ticker."""
-    fill_rect(buf, 28, 942, 664, 44, CARD)
-    fill_rect(buf, 28, 942, 664, 1, INK)
-    text(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 942, "serif_15", MID,
-         "markets-head", xlim=692, ylim=958)
+    fill_rect(buf, 28, 890, 664, 44, CARD)
+    fill_rect(buf, 28, 890, 664, 1, INK)
+    text(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 890, "serif_15", MID,
+         "markets-head", xlim=692, ylim=906)
     for i, (label, value, pct, up) in enumerate(TICKER):
         col, row = divmod(i, 3)
-        x, y = 28 + col * 332, 958 + row * 12
+        x, y = 28 + col * 332, 906 + row * 12
         c = GAIN if up else CRISIS
         text(buf, label, x, y, "sans_10", INK, "mkt-lab-%d" % i,
              xlim=x + 58, ylim=y + 12)
-        text(buf, value, x + 58, y, "sans_10", INK, "mkt-val-%d" % i,
-             xlim=x + 124, ylim=y + 12)
+        value_text(buf, value, x + 58, y, "sans_10", INK,
+                   "mkt-val-%d" % i, xlim=x + 130, ylim=y + 12)
         pw = tw("sans_10", pct)
         arrow(buf, x + 184 - pw, y + 1, up, c)
-        text(buf, pct, x + 190 - pw, y, "sans_10", c, "mkt-pct-%d" % i,
-             xlim=x + 190, ylim=y + 12)
+        value_text(buf, pct, x + 190 - pw, y, "sans_10", c,
+                   "mkt-pct-%d" % i, xlim=x + 194, ylim=y + 12)
 
 
 
 
 def draw_wire(buf):
-    """Full-width overflow wire strip between the leads and the cards."""
-    text(buf, "ALSO REPORTED", 32, 390, "serif_15", MID, "wire-head",
-         xlim=220, ylim=408)
+    """Dedicated wire band with six-pixel clearance above and below."""
+    fill_rect(buf, 28, ALSO_TOP, 968, 1, RULE)
+    text(buf, "ALSO REPORTED", 32, ALSO_TOP + 6, "serif_15", MID,
+         "wire-head", xlim=220, ylim=ALSO_TOP + 20)
     for i, x in enumerate((32, 352, 672)):
         item = BRIEFS[15 + i]
-        s = "%s · %s %s · %s · %s" % (item["place"], item["head"],
-                                     item["num"], item["context"], item["source"])
-        text(buf, s, x, 410, "sans_10", TEXT, "wire-%d" % (15 + i),
-             xlim=x + 300, ylim=424)
+        end = value_text(buf, item["num"], x, ALSO_TOP + 22, "sans_8", TEXT,
+                         "wire-val-%d" % (15 + i), x + 300, ALSO_BOT)
+        s = "%s %s · %s · %s" % (item["place"], item["head"],
+                                 item["context"], item["source"])
+        text(buf, s, end + 3, ALSO_TOP + 22, "sans_8", TEXT,
+             "wire-%d" % (15 + i), xlim=x + 300, ylim=ALSO_BOT)
 
 
 
@@ -822,43 +902,32 @@ def draw_pulse(buf, status):
     draw_slope(buf)
     text(buf, "MARKET PULSE", x + 8, 868, "serif_15", MID,
          "pulse-head", xlim=x + w - 8, ylim=884)
-    text(buf, "STORY COUNT", 708, 948, "sans_10", INK, "stack-head",
-         xlim=860, ylim=966)
-    bar_x, bar_w = 800, 186
-    runs = (("REPORTED", status["REPORTED"], TEAL),
-            ("CLAIM", status["CLAIM"], RED),
-            ("ONGOING", status["ONGOING"], INK))
-    cx = bar_x
-    for label, count, col in runs:
-        seg = bar_w * count // 6
-        fill_rect(buf, cx, 948, seg, 12, col)
-        cx += seg
-    for i, (label, count, col) in enumerate(runs):
-        chip(buf, 708 + i * 92, 968, col)
-        text(buf, label + " " + str(count), 719 + i * 92, 966, "sans_10",
-             TEXT, "stack-legend-%d" % i, xlim=986, ylim=984)
+
+
 
 
 def draw_ticker(buf):
-    fill_rect(buf, 0, 986, W, 38, INK)
-    fill_rect(buf, 0, 990, W, 2, (185, 151, 90))
-    text(buf, "US/EU, NIKKEI, GOLD, OIL, BTC, VIX: FRI 20 NOV CLOSE",
-         28, 998, "sans_10", PAPER, "tick-head", xlim=990, ylim=1016)
+    global TICKER_LAST_Y
+    fill_rect(buf, 24, 972, 976, 18, INK)
+    fill_rect(buf, 24, 972, 976, 2, (185, 151, 90))
     for i, (label, value, pct, up) in enumerate(TICKER):
         x = 28 + i * 160
         c = GAIN_ON if up else RED_ON
-        text(buf, label, x, 1010, "sans_10", PAPER, "tick-lab-%d" % i,
-             xlim=x + 54, ylim=1024)
-        text(buf, value, x + 54, 1010, "sans_10", PAPER, "tick-val-%d" % i,
-             xlim=x + 106, ylim=1024)
-        pw = tw("sans_10", pct)
-        arrow(buf, x + 150 - pw, 1013, up, c)
-        text(buf, pct, x + 156 - pw, 1010, "sans_10", c, "tick-pct-%d" % i,
-             xlim=x + 156, ylim=1024)
+        text(buf, label, x, 976, "sans_8", PAPER, "tick-lab-%d" % i,
+             xlim=x + 48, ylim=986)
+        end = x + tw("sans_8", label) + 3
+        end = value_text(buf, value, end, 976, "sans_8", PAPER,
+                         "tick-val-%d" % i, xlim=x + 118, ylim=986)
+        end += 6
+        arrow(buf, end, 979, up, c)
+        end += 8
+        value_text(buf, pct, end, 976, "sans_8", c,
+                   "tick-pct-%d" % i, xlim=x + 158, ylim=986)
+        TICKER_LAST_Y = max(
+            TICKER_LAST_Y, 976 + ink_rows("sans_8", pct)[1] + 1)
 
 def main():
-    buf = bytearray(W * H * 3)
-    fill_rect(buf, 0, 0, W, H, PAPER)
+    buf = bytearray(bytes(PAPER) * (W * H))
 
     n = len(LEADS) + len(CARDS) + len(BRIEFS)
     assert n == 24, n
@@ -867,16 +936,16 @@ def main():
         status[item["status"]] = status.get(item["status"], 0) + 1
 
     draw_masthead(buf, n)
-    fill_rect(buf, 28, 162, 968, 267, PAPER)
-    border(buf, 28, 162, 968, 267, RULE)
+    fill_rect(buf, 28, 162, 968, 230, PAPER)
+    border(buf, 28, 162, 968, 230, RULE)
     draw_lead(buf, (32, 628), LEADS[0], 0)
     draw_lead(buf, (640, 996), LEADS[1], 1)
     draw_lead_briefs(buf)
     draw_wire(buf)
-    fill_rect(buf, 0, 438, W, 202, CARD)
+    fill_rect(buf, 24, 438, 976, 220, CARD)
     for i, card in enumerate(CARDS):
         draw_card(buf, 28 + i * 244, card, i)
-    fill_rect(buf, 0, 660, 706, 80, CARD)
+    fill_rect(buf, 24, 660, 682, 110, CARD)
     draw_briefs(buf)
     draw_map(buf)
     draw_pulse(buf, status)
@@ -894,6 +963,7 @@ def main():
     path = os.path.join(out_dir, "entry.png")
     write_png(path, buf)
     print("AUDIT ok blocks=%d overlaps=0" % len(BOXES))
+    print("EDGE ok max_x=%d max_y=%d" % (EDGE_MAX_X, EDGE_MAX_Y))
     print("BRIEF_PITCH %d" % BRIEF_PITCH)
     print("BRIEF_GAP %d" % BRIEF_GAP)
     print("TRACKING_OVERRIDES %d" % TRACKING_OVERRIDES)
@@ -904,6 +974,10 @@ def main():
     print("STORIES=%d REPORTED=%d CLAIMS=%d ONGOING=%d BYTES=%d"
           % (n, status.get("REPORTED", 0), status.get("CLAIM", 0),
              status.get("ONGOING", 0), os.path.getsize(path)))
+    assert TICKER_LAST_Y <= 990, TICKER_LAST_Y
+    print("TICKER_LAST_Y %d" % TICKER_LAST_Y)
+    print("ALSO_TOP %d ALSO_BOT %d" % (ALSO_TOP, ALSO_BOT))
+    print("MAP_LABEL_GAP %d" % MAP_LABEL_GAP)
 
 
 main()
