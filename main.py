@@ -63,6 +63,9 @@ CARD_FOOT_LINES = []
 PRIORITY_BAR = 0
 QUIET_CARDS = 0
 METRIC_SIZES = []
+CAP_TRACK = 0
+MAX_CAP_PX = 0
+CAP_FACES = set()
 TRACKING_OVERRIDES = 0
 SCALE_LEAD, SCALE_BODY = 30, 10
 ORPHANS = 0
@@ -294,7 +297,7 @@ def frame(x, y, w, h):
 
 def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
          tracking=0):
-    global TRACK_VARIANTS, FACES
+    global TRACK_VARIANTS, FACES, CAP_TRACK, MAX_CAP_PX, CAP_FACES
     if not s:
         return 0
     if tracking not in (0, 1):
@@ -324,6 +327,15 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
     elif key.startswith("sans_"):
         WEIGHTS["tertiary"] += 1
     FACES.add("serif" if key.startswith("serif") else key.split("_", 1)[0])
+    cap_label = (s.upper() == s and any(c.isalpha() for c in s)
+                 and name not in ("masthead", "mast-deck")
+                 and not name.startswith(("lead-head", "card-head",
+                                          "brief-head")))
+    if cap_label:
+        CAP_TRACK += tracking
+        MAX_CAP_PX = max(MAX_CAP_PX, int(key.rsplit("_", 1)[1]))
+        CAP_FACES.add("serif" if key.startswith("serif")
+                      else key.split("_", 1)[0])
     if name.startswith("brief-place-"):
         BASELINE_ROWS.append((box[0], box[1]))
     if name.startswith("card-foot-"):
@@ -357,7 +369,7 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
 
 def section_head(buf, s, x, y, xlim, name, rule_x=None, rule_x1=None,
                  rule_dy=19):
-    text(buf, s, x, y, "serifbold_16", MID, name,
+    text(buf, s, x, y, "sans_10", MID, name,
          xlim=xlim, ylim=y + 20)
     rx0 = x if rule_x is None else rule_x
     rx1 = xlim if rule_x1 is None else rule_x1
@@ -751,7 +763,7 @@ def spot(buf, x, y, kind, col):
         line(buf, x + 2, y + 60, x + 58, y + 60, col)
 
     elif kind == "chart":
-        text(buf, "5D", x + 2, y, "serif_15", MID, "spot-chart-title",
+        text(buf, "5D", x + 2, y, "sans_10", MID, "spot-chart-title",
              xlim=x + 24, ylim=y + 18)
         line(buf, x + 4, y + 18, x + 4, y + 68, col)
         line(buf, x + 4, y + 68, x + 58, y + 68, col)
@@ -869,8 +881,8 @@ def draw_lead(buf, edge, lead, ncol):
         body_cols, body_w = (tx,), lim - tx - 12
         fill_rect(buf, tx, 176, 96, 1, RULE)
         kicker_y, place_y = 182, 184
-    kw = tw("serif_15", lead["kicker"])
-    text(buf, lead["kicker"], tx, kicker_y, "serif_15", MID,
+    kw = tw("sans_10", lead["kicker"])
+    text(buf, lead["kicker"], tx, kicker_y, "sans_10", MID,
          "lead-kicker-%d" % ncol, xlim=tx + kw, ylim=kicker_y + 18)
     text(buf, lead["place"], tx + kw + 8, place_y, "sans_10", TEXT,
          "lead-place-%d" % ncol, xlim=lim, ylim=place_y + 20)
@@ -893,7 +905,7 @@ def draw_lead(buf, edge, lead, ncol):
             text(buf, ln, px, ly, "serif_10", TEXT,
                  "lead-body-%d-%d-%d" % (ncol, col, j),
                  xlim=px + body_w + 24, ylim=ly + 14)
-    text(buf, lead["detail"], tx, detail_y, "sans_12", TEXT,
+    text(buf, lead["detail"], tx, detail_y, "sans_10", TEXT,
          "lead-detail-%d" % ncol, xlim=head_lim, ylim=detail_y + 20)
     chip(buf, tx, foot_y, STATUS_COL[lead["status"]])
     text(buf, lead["source"] + " · " + lead["status"], tx + 12, foot_y,
@@ -965,7 +977,7 @@ def draw_briefs(buf):
         TONAL_TABS += 1
         frame(22, y - 16, 660, 23)
         GROUP_FRAME = FRAMES[-1]
-        text(buf, label, 32, y - 8, "serifbold_7", MID,
+        text(buf, label, 32, y - 8, "sans_7", MID,
              "brief-group-%d" % gi, xlim=220, ylim=y - 1)
         fill_rect(buf, 32, y - 1, 660, 1, RULE)
         box_start = len(BOXES)
@@ -977,8 +989,8 @@ def draw_briefs(buf):
             if i == feature:
                 x, xlim = 32, 460
                 frame(x - 10, y - 5, 438, 47)
-                pw = tw("serifbold_10", place)
-                text(buf, place, x, y, "serifbold_10", INK,
+                pw = tw("sans_10", place)
+                text(buf, place, x, y, "sans_10", INK,
                      "brief-place-%d" % i, xlim=x + pw + 8,
                      ylim=y + 13)
                 text(buf, item["head"], x + pw + 8, y, "serif_10", INK,
@@ -995,7 +1007,7 @@ def draw_briefs(buf):
                 x = 32 + (440 if feature is not None and slot else slot * 220)
                 xlim = x + (220 if slot == 2 else 208)
                 frame(x - 10, y - 8, (xlim - x) + 20, 49)
-                text(buf, place, x, y, "serifbold_10", INK,
+                text(buf, place, x, y, "sans_10", INK,
                      "brief-place-%d" % i, xlim=xlim, ylim=y + 13)
                 text(buf, item["head"], x, y + BRIEF_PITCH, "serif_10", INK,
                      "brief-head-%d" % i, xlim=xlim,
@@ -1025,8 +1037,8 @@ def draw_markets(buf):
     frame(18, 886, 684, 56)
     fill_rect(buf, 28, 890, 664, 1, INK)
     fill_rect(buf, 28, 948, 664, 6, TEAL)
-    section_head(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 890, 692,
-                 "markets-head", 28, 692, rule_dy=20)
+    section_head(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 891, 692,
+                 "markets-head", 28, 692, rule_dy=19)
     for i, (label, value, pct, up) in enumerate(TICKER):
         col, row = divmod(i, 3)
         x, y = 28 + col * 332, 911 + row * 12
@@ -1132,6 +1144,9 @@ def main():
     assert PRIORITY_BAR == 1, PRIORITY_BAR
     assert QUIET_CARDS == 1, QUIET_CARDS
     assert sorted(METRIC_SIZES, reverse=True) == [24, 15, 15, 15], METRIC_SIZES
+    assert CAP_TRACK == 0, CAP_TRACK
+    assert MAX_CAP_PX <= 11, MAX_CAP_PX
+    assert CAP_FACES == {"sans"}, CAP_FACES
     assert ORPHANS == 0, ORPHANS
     assert MAP_LABELS == 5, MAP_LABELS
     assert n >= 22, n
@@ -1181,6 +1196,9 @@ def main():
     print("PRIORITY_BAR %d" % PRIORITY_BAR)
     print("METRIC_SIZES %s" % sorted(METRIC_SIZES, reverse=True))
     print("QUIET_CARDS %d" % QUIET_CARDS)
+    print("CAP_TRACK %d" % CAP_TRACK)
+    print("MAX_CAP_PX %d" % MAX_CAP_PX)
+    print("CAP_FACES %s" % sorted(CAP_FACES))
     print("BRIEF_GROUPS %d" % BRIEF_GROUPS)
     print("TONAL_TABS %d" % TONAL_TABS)
     print("FEATURE_BRIEFS %d" % FEATURE_BRIEFS)
