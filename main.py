@@ -34,11 +34,11 @@ GAIN = (22, 101, 52)
 RED_ON = (234, 96, 96)
 GAIN_ON = (104, 208, 136)
 STATUS_COL = {"REPORTED": TEAL, "CLAIM": RED, "ONGOING": INK}
-LAND_FILL = (221, 215, 205)
-COAST_BAND = (214, 206, 195)
+LAND_FILL = (233, 225, 214)
 LAND_DARK = (202, 192, 180)
 COAST_INK = (85, 91, 97)
 GRAT = (200, 196, 186)
+HATCH = (196, 188, 176)
 AXIS = (168, 162, 150)
 AXIS_STRONG = (137, 130, 119)
 CRISIS = (179, 27, 27)
@@ -52,6 +52,9 @@ SLOPE = (("6,910.39", "-3.70%", False, 2, 2),
          ("$92.57", "+0.64%", True, 4, 0),
          ("$58,831", "-5.1%", False, 0, 4))
 SOURCES = ("REUTERS", "AP", "AL JAZEERA", "THE HINDU", "DETIK", "CNBC")
+BRIEF_PITCH = 15
+BRIEF_GAP = 6
+TRACKING_OVERRIDES = 0
 
 BOXES = []
 RULES = []
@@ -91,7 +94,7 @@ CARDS = [
 
 BRIEFS = [
     {"place": "WASHINGTON", "head": "DEMOCRATS WIN HOUSE", "num": "11",
-     "context": "DEC funding deadline", "source": "REUTERS"},
+     "context": "DEC funding", "source": "REUTERS"},
     {"place": "GENEVA", "head": "ROBOT RULES BACKED", "num": "128",
      "context": "nations; by 2028", "source": "REUTERS"},
     {"place": "KHARTOUM", "head": "DRONE HITS UN SITE", "num": "3",
@@ -99,7 +102,7 @@ BRIEFS = [
     {"place": "CALIFORNIA", "head": "CONCERT SHOOTING", "num": "9",
      "context": "wounded; 1 critical", "source": "AP"},
     {"place": "LAHORE", "head": "MOST POLLUTED CITY", "num": "538",
-     "context": "AQI; world ranking", "source": "THE HINDU"},
+     "context": "AQI; world top", "source": "THE HINDU"},
     {"place": "SEOUL", "head": "MINISTER QUITS", "num": "1",
      "context": "AI exam scandal", "source": "AP"},
     {"place": "OKINAWA", "head": "SHURI CASTLE REOPENS", "num": "7",
@@ -111,7 +114,7 @@ BRIEFS = [
     {"place": "OC / NEW ZEALAND", "head": "VOTE TOO CLOSE", "num": "27",
      "context": "Nov recount", "source": "OC DESK"},
     {"place": "ME / BAHRAIN", "head": "IRAN STRUCK SITE", "num": "0",
-     "context": "civilian; no casualties", "source": "ME DESK"},
+     "context": "civilian; none hurt", "source": "ME DESK"},
     {"place": "ME / IRAN", "head": "TWO DRONES DOWN", "num": "2",
      "context": "US drones claimed", "source": "ME DESK"},
     {"place": "ME / YEMEN", "head": "SANAA DEPOT HIT", "num": "6",
@@ -124,8 +127,8 @@ BRIEFS = [
      "context": "talks failed", "source": "EU DESK"},
     {"place": "LA / PANAMA", "head": "OBJECTED TO PACT", "num": "31",
      "context": "COP31 pact", "source": "LA DESK"},
-    {"place": "OC / FIJI, TONGA", "head": "EL NINO DROUGHT", "num": "2",
-     "context": "nations; crisis level", "source": "OC DESK"},
+    {"place": "FIJI / TONGA", "head": "EL NINO DROUGHT", "num": "2",
+     "context": "crisis level", "source": "OC DESK"},
 ]
 
 # Grounded in the entry_4 artifact of this competition: Fri 20 Nov close.
@@ -303,9 +306,14 @@ def disc(buf, cx, cy, r, c):
 
 
 def world(buf):
-    """Natural Earth coastline: three-tone fill, weighted keyline, graticule."""
+    """Natural Earth coastline: hatched sea, two-tone land, weighted keyline."""
     fill_rect(buf, 706, 665, 289, 141, SEA)
-    biggest = max(range(len(COAST)), key=lambda i: len(COAST[i]))
+    for gy in range(668, 804, 12):
+        for gx in range(708, 993, 12):
+            for k in range(3):
+                line(buf, gx + k * 2, gy + 3, gx + k * 2 + 2, gy + 1, HATCH)
+    largest = sorted(range(len(COAST)), key=lambda i: len(COAST[i]),
+                     reverse=True)[:3]
     for ring_index, ring in enumerate(COAST):
         pts = [(706 + px * 288 / 1000, 665 + py * 140 / 1000)
                for px, py in ring]
@@ -325,15 +333,14 @@ def world(buf):
                 b = min(994, int(hits[k + 1]))
                 if b <= a:
                     continue
-                fill_rect(buf, a, yy, b - a + 1, 1, COAST_BAND)
-                if b - a > 4:
-                    fill_rect(buf, a + 2, yy, b - a - 3, 1, LAND_FILL)
-                if ring_index == biggest and b - a > 14:
-                    fill_rect(buf, a + 6, yy, b - a - 11, 1, LAND_DARK)
-    for ring in COAST:
+                fill_rect(buf, a, yy, b - a + 1, 1, LAND_FILL)
+                if ring_index in largest and b - a > 4:
+                    fill_rect(buf, a + 1, yy, 1, 1, LAND_DARK)
+                    fill_rect(buf, b - 1, yy, 1, 1, LAND_DARK)
+    for ring_index, ring in enumerate(COAST):
         pts = [(round(706 + px * 288 / 1000), round(665 + py * 140 / 1000))
                for px, py in ring]
-        major = len(ring) > 200
+        major = ring_index in largest
         for i in range(len(pts)):
             ax, ay = pts[i]
             bx, by = pts[(i + 1) % len(pts)]
@@ -424,20 +431,36 @@ def market_path(buf):
         line(buf, x0, y0 + 1, x1, y1 + 1, CRISIS)
     disc(buf, 892, 857, 4, CREAM)
     disc(buf, 892, 857, 2, CRISIS)
+    for x, label in ((708, "D1"), (794, "D3"), (876, "D5")):
+        text(buf, label, x, 861, "sans_8", TEXT, "path-tick-%s" % label,
+             xlim=x + 18, ylim=872)
+    text(buf, "-3.70%", 828, 812, "sans_8", CRISIS, "path-extreme",
+         xlim=896, ylim=822)
+    line(buf, 860, 822, 890, 853, CRISIS)
 
 
 def ruled_bars(buf, status):
     """Three ruled status bars using grounded story counts."""
     x, y = 904, 818
     line(buf, x, y, x, y + 55, INK)
-    for i, (width, key, col) in enumerate(((38, "REPORTED", CRISIS),
-                                           (52, "CLAIM", INK),
-                                           (22, "ONGOING", TEAL))):
+    keys = ("REPORTED", "CLAIM", "ONGOING")
+    cols = (CRISIS, INK, TEAL)
+    top = max(status[key] for key in keys)
+    for i, key in enumerate(keys):
+        count = status[key]
+        width = max(10, round(52 * count / top))
         by = y + 4 + i * 14
-        fill_rect(buf, x + 2, by, width, 9, col)
+        fill_rect(buf, x + 2, by, width, 9, cols[i])
         fill_rect(buf, x + 2 + width, by, 1, 9, CREAM)
-        text(buf, str(status[key]), x + 62, by - 2, "sans_10", col,
+        text(buf, str(count), x + 62, by - 2, "sans_10", cols[i],
              "bar-val-%d" % i, xlim=x + 80, ylim=by + 12)
+    text(buf, "MAX %d" % top, x + 8, 808, "sans_8", CRISIS, "bar-extreme",
+         xlim=x + 48, ylim=818)
+    for n in range(0, top + 1, 2):
+        text(buf, str(n), x + 2 + n * 13, 868, "sans_8", TEXT,
+             "bar-axis-%d" % n, xlim=x + 80, ylim=878)
+
+
 
 
 
@@ -473,28 +496,50 @@ def spot(buf, x, y, kind, col):
                 line(buf, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1],
                      col if row == 0 else DEEP)
     elif kind == "ship":
-        fill_rect(buf, x + 10, y + 36, 40, 10, PAPER)
-        line(buf, x + 8, y + 36, x + 52, y + 36, col)
-        line(buf, x + 8, y + 46, x + 52, y + 46, col)
-        line(buf, x + 8, y + 36, x + 14, y + 46, col)
-        line(buf, x + 52, y + 36, x + 46, y + 46, col)
-        line(buf, x + 30, y + 36, x + 30, y + 14, col)
-        line(buf, x + 32, y + 16, x + 46, y + 34, CREAM)
-        line(buf, x + 29, y + 18, x + 16, y + 34, CREAM)
-        for gx in (4, 24, 44):
-            line(buf, x + gx, y + 54, x + gx + 10, y + 54, DEEP)
+        fill_rect(buf, x + 8, y + 38, 44, 8, PAPER)
+        hull = ((4, 38), (10, 46), (50, 46), (56, 38), (4, 38))
+        for i in range(len(hull) - 1):
+            x0, y0 = hull[i]
+            x1, y1 = hull[i + 1]
+            line(buf, x + x0, y + y0, x + x1, y + y1, col)
+        fill_rect(buf, x + 16, y + 30, 12, 8, PAPER)
+        border(buf, x + 16, y + 30, 12, 8, col, reg=False)
+        fill_rect(buf, x + 32, y + 26, 12, 12, PAPER)
+        border(buf, x + 32, y + 26, 12, 12, col, reg=False)
+        fill_rect(buf, x + 28, y + 16, 5, 12, CREAM)
+        border(buf, x + 28, y + 16, 5, 12, col, reg=False)
+        line(buf, x + 28, y + 16, x + 33, y + 16, col)
+        line(buf, x + 33, y + 18, x + 40, y + 12, RED)
+        line(buf, x + 30, y + 30, x + 30, y + 10, col)
+        line(buf, x + 30, y + 12, x + 44, y + 26, CREAM)
+        line(buf, x + 29, y + 12, x + 18, y + 26, CREAM)
+        for dy in (52, 56, 60):
+            wave = ((2, dy), (20, dy - 3), (40, dy), (58, dy - 2))
+            for i in range(len(wave) - 1):
+                line(buf, x + wave[i][0], y + wave[i][1],
+                     x + wave[i + 1][0], y + wave[i + 1][1], DEEP)
+        for px in (20, 40):
+            disc(buf, x + px, y + 42, 1, AMBER)
+
     elif kind == "skyline":
-        for i, (hgt, edge) in enumerate(((28, INK), (42, DEEP), (34, TEXT))):
-            bx = x + 4 + i * 16
-            fill_rect(buf, bx, y + 60 - hgt, 14, hgt, PAPER)
-            border(buf, bx, y + 60 - hgt, 14, hgt, edge, reg=False)
-        for wx, wy in ((8, 40), (10, 50), (24, 28), (40, 36)):
+        for bx, bw, top, hgt, edge in ((4, 14, 32, 28, INK),
+                                       (20, 16, 18, 42, DEEP),
+                                       (38, 14, 26, 34, TEXT)):
+            fill_rect(buf, x + bx, y + top, bw, hgt, PAPER)
+            border(buf, x + bx, y + top, bw, hgt, edge, reg=False)
+            line(buf, x + bx, y + top, x + bx + bw, y + top, edge)
+        for wx, wy in ((8, 38), (8, 48), (24, 26), (28, 36),
+                       (42, 32), (44, 44)):
             fill_rect(buf, x + wx, y + wy, 3, 3, AMBER)
-        line(buf, x + 30, y + 18, x + 30, y + 6, INK)
-        for sx in (2, 12, 22):
-            line(buf, x + sx, y + 10, x + sx + 5, y + 10, DEEP)
-        fill_rect(buf, x + 40, y + 8, 8, 2, INK)
+        line(buf, x + 28, y + 18, x + 28, y + 6, INK)
+        line(buf, x + 28, y + 6, x + 40, y + 10, RED)
+        fill_rect(buf, x + 2, y + 60, 56, 3, PAPER)
+        border(buf, x + 2, y + 60, 56, 3, col, reg=False)
+        line(buf, x + 2, y + 60, x + 58, y + 60, col)
+
     elif kind == "chart":
+        text(buf, "-5.06%", x + 22, y + 2, "sans_8", CRISIS,
+             "spot-chart-val", xlim=x + 60, ylim=y + 11)
         line(buf, x + 4, y + 10, x + 4, y + 58, col)
         line(buf, x + 4, y + 58, x + 58, y + 58, col)
         line(buf, x + 6, y + 18, x + 20, y + 30, RED)
@@ -503,6 +548,11 @@ def spot(buf, x, y, kind, col):
         for dx, dy in ((6, 18), (20, 30), (34, 26), (54, 48)):
             disc(buf, x + dx, y + dy, 2, CREAM)
             disc(buf, x + dx, y + dy, 1, RED)
+        text(buf, "D1", x + 4, y + 58, "sans_8", TEXT, "spot-chart-d1",
+             xlim=x + 18, ylim=y + 67)
+        text(buf, "D5", x + 46, y + 58, "sans_8", TEXT, "spot-chart-d5",
+             xlim=x + 60, ylim=y + 67)
+
     elif kind == "tower":
         fill_rect(buf, x + 18, y + 18, 22, 44, PAPER)
         border(buf, x + 18, y + 18, 22, 44, col, reg=False)
@@ -643,24 +693,31 @@ def draw_card(buf, x, card, i):
 def draw_briefs(buf):
     text(buf, "MORE IN BRIEF / 23 NOV", 32, 664, "sans_10", RED, "briefs-head",
          xlim=692, ylim=680)
-    fill_rect(buf, 32, 681, 660, 1, RULE)
     fill_rect(buf, 32, 684, 660, 6, RED)
     for gx in (248, 468):
         fill_rect(buf, gx, 688, 1, 246, COL_SEP)
-    for i, item in enumerate(BRIEFS):
-        col, row = divmod(i, 6)
-        x, y = 32 + col * 220, 694 + row * 40
-        xlim = x + 212
+    for i, item in enumerate(BRIEFS[:15]):
+        row, col = divmod(i, 3)
+        x = 32 + col * 220
+        y = 694 + row * (2 * BRIEF_PITCH + BRIEF_GAP + 7)
+        xlim = x + (220 if col == 2 else 212)
         text(buf, item["place"], x, y, "sans_10", INK,
              "brief-place-%d" % i, xlim=xlim, ylim=y + 12)
-        text(buf, item["head"], x, y + 10, "sans_12", INK,
-             "brief-head-%d" % i, xlim=xlim, ylim=y + 25)
-        text(buf, item["num"], x, y + 21, "sans_10", CRISIS,
-             "brief-num-%d" % i, xlim=x + 52, ylim=y + 34)
-        text(buf, item["context"], x + 58, y + 22, "sans_10", TEXT,
-             "brief-context-%d" % i, xlim=xlim, ylim=y + 35)
-        text(buf, item["source"], x, y + 31, "sans_10", TEXT,
-             "brief-source-%d" % i, xlim=xlim, ylim=y + 43)
+        text(buf, item["head"], x, y + BRIEF_PITCH, "sans_10", INK,
+             "brief-head-%d" % i, xlim=xlim, ylim=y + 27)
+        detail = " · ".join((item["num"], item["context"], item["source"]))
+        text(buf, detail, x, y + 2 * BRIEF_PITCH, "sans_10", TEXT,
+             "brief-detail-%d" % i, xlim=xlim, ylim=y + 42)
+
+
+def draw_lead_briefs(buf):
+    """Three overflow briefs in the existing two-column lead field."""
+    for i, (x, y) in enumerate(((38, 347), (38, 362), (588, 347))):
+        item = BRIEFS[15 + i]
+        s = " · ".join((item["place"], item["head"], item["num"],
+                        item["context"], item["source"]))
+        text(buf, s, x, y, "sans_10", TEXT, "lead-brief-%d" % (15 + i),
+             xlim=566 if x < 500 else 986, ylim=y + 12)
 
 
 def draw_markets(buf):
@@ -700,19 +757,27 @@ def draw_glance(buf, n):
 def draw_slope(buf):
     """Friday close to daily move, paired by grounded market rank."""
     ax_l, ax_r = 766, 950
+    text(buf, "CLOSE", 720, 896, "sans_8", TEXT, "slope-axis-l",
+         xlim=ax_l, ylim=906)
+    text(buf, "MOVE", 910, 896, "sans_8", TEXT, "slope-axis-r",
+         xlim=ax_r, ylim=906)
     line(buf, ax_l, 904, ax_l, 944, AXIS_STRONG)
     line(buf, ax_r, 904, ax_r, 944, AXIS_STRONG)
-    for value, pct, up, lr, rr in SLOPE:
+    for i, (value, pct, up, lr, rr) in enumerate(SLOPE):
         y0, y1 = 906 + lr * 8, 906 + rr * 8
         c = GAIN if up else CRISIS
         line(buf, ax_l + 1, y0 + 4, ax_r - 1, y1 + 4, c)
         disc(buf, ax_l, y0 + 4, 1, c)
         disc(buf, ax_r, y1 + 4, 1, c)
-        text(buf, value, 720, y0, "mono_8", INK, "slope-l",
+        text(buf, value, 720, y0, "sans_8", INK, "slope-l-%d" % i,
              xlim=ax_l - 4, ylim=y0 + 9)
-        pw = tw("mono_8", pct)
-        text(buf, pct, 986 - pw, y1, "mono_8", c, "slope-r",
+        pw = tw("sans_8", pct)
+        text(buf, pct, 986 - pw, y1, "sans_8", c, "slope-r-%d" % i,
              xlim=986, ylim=y1 + 9)
+    extreme = min(SLOPE, key=lambda row: float(row[1].rstrip("%")))[1]
+    text(buf, "LOW " + extreme, 820, 932, "sans_8", CRISIS,
+         "slope-extreme", xlim=900, ylim=942)
+
 
 def draw_pulse(buf, status):
     x, y, w = 708, 878, 288
@@ -773,6 +838,9 @@ def main():
     fill_rect(buf, 572, 176, 1, 240, COL_SEP)
     for i, lead in enumerate(LEADS):
         draw_lead(buf, (28, 566) if i == 0 else (578, 986), lead, i)
+    draw_lead_briefs(buf)
+
+
     draw_glance(buf, n)
     for i, card in enumerate(CARDS):
         draw_card(buf, 28 + i * 244, card, i)
@@ -793,6 +861,9 @@ def main():
     path = os.path.join(out_dir, "entry.png")
     write_png(path, buf)
     print("AUDIT ok blocks=%d overlaps=0" % len(BOXES))
+    print("BRIEF_PITCH %d" % BRIEF_PITCH)
+    print("BRIEF_GAP %d" % BRIEF_GAP)
+    print("TRACKING_OVERRIDES %d" % TRACKING_OVERRIDES)
     print("MONO_USES %d" % len(MONO_USES))
     print("STORIES=%d REPORTED=%d CLAIMS=%d ONGOING=%d BYTES=%d"
           % (n, status.get("REPORTED", 0), status.get("CLAIM", 0),
