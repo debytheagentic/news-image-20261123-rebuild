@@ -96,6 +96,10 @@ RAIL_XS = frozenset((28, 32, 38, 56, 252, 282, 472, 526, 640, 682, 770))
 OFF_RAIL = 0
 BREAK_BALANCE = 0
 RAIL_LINE = (156, 660)
+SUBTEXT_GAPS = []
+SUBTEXT_OFFSETS = []
+SUBTEXT_WIDOWS = 0
+LAST_HEAD = {}
 BRIEF_LEAD = 0
 RULE_CLEAR = 0
 
@@ -307,6 +311,7 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
          tracking=0):
     global TRACK_VARIANTS, FACES, CAP_TRACK, MAX_CAP_PX, CAP_FACES
     global BODY_SIZES, OFF_RAIL
+    global SUBTEXT_GAPS, SUBTEXT_OFFSETS, SUBTEXT_WIDOWS, LAST_HEAD
     if not s:
         return 0
     if ((name.startswith(("lead-head-", "card-head-", "brief-place-"))
@@ -330,6 +335,22 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
         audit_fail(name, y + bot + 1 - ylim)
     box = (x, y + top, x + w, y + bot + 1)
     edge_check(name, box)
+    parts = name.split("-")
+    if name.startswith("lead-head-"):
+        LAST_HEAD[parts[2]] = box
+    elif name.startswith("card-head-"):
+        LAST_HEAD["c" + parts[2]] = box
+    if name.startswith("lead-detail-"):
+        head_box = LAST_HEAD[name.rsplit("-", 1)[1]]
+        SUBTEXT_GAPS.append(box[1] - head_box[3])
+        SUBTEXT_OFFSETS.append(box[0] - head_box[0])
+        SUBTEXT_WIDOWS += len(s.split()) == 1
+    elif name.startswith("card-story-"):
+        if parts[-1] == "0":
+            head_box = LAST_HEAD["c" + parts[2]]
+            SUBTEXT_GAPS.append(box[1] - head_box[3])
+            SUBTEXT_OFFSETS.append(box[0] - head_box[0])
+        SUBTEXT_WIDOWS += len(s.split()) == 1
     if key.startswith("mono_"):
         MONO_USES.add("ticker" if name.startswith("tick-") else name)
     elif key.startswith("serifbold_"):
@@ -894,7 +915,7 @@ def draw_lead(buf, edge, lead, ncol):
         head_lim = 600
         key = "serifbold_30"
         head_y = (204, 248)
-        body_y, detail_y, foot_y = 286, 330, 350
+        body_y, foot_y = 286, 350
         body_cols, body_w = (56, 336), 268
         fill_rect(buf, 52, 186, 552, 182, PAPER)
         fill_rect(buf, tx, 186, 184, 3, CRISIS)
@@ -904,7 +925,7 @@ def draw_lead(buf, edge, lead, ncol):
         head_lim = lim - 24
         key = "serifbold_30"
         head_y = (202, 238)
-        body_y, detail_y, foot_y = 282, 347, 370
+        body_y, foot_y = 282, 370
         body_cols, body_w = (tx,), lim - tx - 12
         fill_rect(buf, tx, 176, 96, 1, RULE)
         kicker_y, place_y = 182, 184
@@ -920,6 +941,8 @@ def draw_lead(buf, edge, lead, ncol):
         text(buf, ln, tx, head_y[j], key, INK,
              "lead-head-%d-%d" % (ncol, j), xlim=head_lim,
              ylim=head_y[j] + (44 if ncol == 0 else 36))
+    last_bottom = head_y[len(lines) - 1] + ink_rows(key, lines[-1])[1] + 1
+    detail_y = last_bottom + 3 - ink_rows("serif_10", lead["detail"])[0]
     parts = lead["context"].split(". ") if ncol == 0 else (lead["context"],)
     for col, (px, part) in enumerate(zip(body_cols, parts)):
         body_lines = wrap("serif_10", part, body_w)
@@ -980,9 +1003,12 @@ def draw_card(buf, x, card, i):
         text(buf, lines[1], tx, 538, "serif_15", MID, "card-head-%d-b" % i,
              xlim=text_x, ylim=558)
     story = wrap("serif_10", card["story"], lim - tx)
+    last_y = 538 if len(lines) > 1 else 516
+    last_bottom = last_y + ink_rows("serif_15", lines[-1])[1] + 1
+    story_y = last_bottom + 3 - ink_rows("serif_10", story[0])[0]
     CARD_OVERFLOW += max(0, len(story) - 2)
     for j, line in enumerate(story[:2]):
-        ly = 566 + j * 18
+        ly = story_y + j * 18
         if tw("serif_10", line) > lim - tx:
             CARD_OVERFLOW += 1
         text(buf, line, tx, ly, "serif_10", TEXT,
@@ -1181,6 +1207,9 @@ def main():
     assert ORPHANS == 0, ORPHANS
     assert OFF_RAIL == 0, OFF_RAIL
     assert BREAK_BALANCE <= 55, BREAK_BALANCE
+    assert len(SUBTEXT_GAPS) == 6 and all(g == 3 for g in SUBTEXT_GAPS), SUBTEXT_GAPS
+    assert all(o == 0 for o in SUBTEXT_OFFSETS), SUBTEXT_OFFSETS
+    assert SUBTEXT_WIDOWS == 0, SUBTEXT_WIDOWS
     assert MAP_LABELS == 5, MAP_LABELS
     assert n >= 22, n
     assert BRIEF_LEAD >= 5, BRIEF_LEAD
@@ -1222,6 +1251,9 @@ def main():
     print("OFF_RAIL %d" % OFF_RAIL)
     print("BREAK_BALANCE %d" % BREAK_BALANCE)
     print("RAIL_LINE %d-%d" % RAIL_LINE)
+    print("SUBTEXT_GAP %d" % max(SUBTEXT_GAPS))
+    print("SUBTEXT_OFFSETS %s" % SUBTEXT_OFFSETS)
+    print("SUBTEXT_WIDOWS %d" % SUBTEXT_WIDOWS)
     print("BRIEF_LEAD %d" % BRIEF_LEAD)
     print("BRIEF_GAP %d" % BRIEF_GAP)
     print("RULE_CLEAR %d" % RULE_CLEAR)
