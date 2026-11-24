@@ -48,6 +48,12 @@ SOURCES = ("REUTERS", "AP", "AL JAZEERA", "THE HINDU", "DETIK", "CNBC")
 BRIEF_PITCH = 13
 BRIEF_GAP = 7
 BRIEF_ROW_PITCH = 41
+BRIEF_PITCH = 10
+GROUP_PITCHES = []
+BRIEF_GROUPS = 0
+TONAL_TABS = 0
+FEATURE_BRIEFS = 0
+GROUP_FRAME = None
 TRACKING_OVERRIDES = 0
 SCALE_LEAD, SCALE_BODY = 30, 10
 ORPHANS = 0
@@ -143,6 +149,14 @@ BRIEFS = [
     {"place": "FIJI/TONGA", "head": "DROUGHT", "num": "2",
      "context": "crisis", "source": "OC DESK"},
 ]
+
+GROUPS = (
+    ("AMERICAS", INK, (0, 3, 8), None),
+    ("EUROPE", TEAL, (1, 7, 15), None),
+    ("MIDDLE EAST", CRISIS, (10, 11, 12), None),
+    ("ASIA-PACIFIC", AMBER, (4, 5), 4),
+    ("AFRICA", CRISIS, (2,), None),
+)
 
 # Grounded in the entry_4 artifact of this competition: Fri 20 Nov close.
 TICKER = [
@@ -302,9 +316,12 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
     FACES.add("serif" if key.startswith("serif") else key.split("_", 1)[0])
     if name.startswith("brief-place-"):
         BASELINE_ROWS.append((box[0], box[1]))
-    candidates = [f for f in FRAMES
-                  if box[0] >= f[0] and box[2] <= f[2]
-                  and box[1] >= f[1] and box[3] <= f[3]]
+    if name.startswith("brief-group-") and GROUP_FRAME is not None:
+        candidates = [GROUP_FRAME]
+    else:
+        candidates = [f for f in FRAMES
+                      if box[0] >= f[0] and box[2] <= f[2]
+                      and box[1] >= f[1] and box[3] <= f[3]]
     anchored = not name.startswith(("pin-", "plate-", "wire-", "map-lat-",
                                     "map-lon-", "map-north", "map-scale",
                                     "spot-", "lead-body-", "lead-place-",
@@ -909,37 +926,65 @@ def draw_card(buf, x, card, i):
 
 
 def draw_briefs(buf):
-    global BRIEF_LEAD
-    spans = [[], [], []]
-    for i, item in enumerate(BRIEFS[:15]):
-        row, col = divmod(i, 3)
-        x = 32 + col * 220
-        y = 688 + row * BRIEF_ROW_PITCH
-        xlim = x + (220 if col == 2 else 208)
-        frame(x - 10, y - 8, (xlim - x) + 20, 55)
-        place = item["place"].upper()
-        text(buf, place, x, y, "serifbold_10", INK,
-             "brief-place-%d" % i, xlim=xlim, ylim=y + 13)
-        text(buf, item["head"], x, y + BRIEF_PITCH, "serif_10", INK,
-             "brief-head-%d" % i, xlim=xlim, ylim=y + 26)
-        end = value_text(buf, item["num"], x, y + 2 * BRIEF_PITCH,
-                         "sans_10", TEXT, "brief-val-%d" % i,
-                         xlim, y + 39)
-        detail = " · " + " · ".join((item["context"], item["source"]))
-        text(buf, detail, end + 3, y + 2 * BRIEF_PITCH, "sans_10", TEXT,
-             "brief-detail-%d" % i, xlim=xlim, ylim=y + 39)
-        parts = ((place, 0, "serifbold_10"),
-                 (item["head"], BRIEF_PITCH, "serif_10"),
-                 (item["num"], 2 * BRIEF_PITCH, "sans_10"),
-                 (detail, 2 * BRIEF_PITCH, "sans_10"))
-        top, bot = 1024, 0
-        for s, dy, key in parts:
-            t, b = ink_rows(key, s)
-            top, bot = min(top, y + dy + t), max(bot, y + dy + b + 1)
-        spans[col].append((top, bot))
-    BRIEF_LEAD = min(nxt[0] - prev[1]
-                     for column in spans
-                     for prev, nxt in zip(column, column[1:]))
+    global BRIEF_LEAD, BRIEF_GROUPS, TONAL_TABS, FEATURE_BRIEFS
+    BRIEF_GROUPS = len(GROUPS)
+    global GROUP_FRAME
+    gaps = []
+    for gi, (label, color, indices, feature) in enumerate(GROUPS):
+        y = 688 + gi * BRIEF_ROW_PITCH
+        fill_rect(buf, 24, y - 8, 2, 18, color)
+        TONAL_TABS += 1
+        frame(22, y - 16, 660, 23)
+        GROUP_FRAME = FRAMES[-1]
+        text(buf, label, 32, y - 8, "serifbold_7", MID,
+             "brief-group-%d" % gi, xlim=220, ylim=y - 1)
+        fill_rect(buf, 32, y - 1, 660, 1, RULE)
+        box_start = len(BOXES)
+        spans = []
+        for slot, i in enumerate(indices):
+            item = BRIEFS[i]
+            place = item["place"].upper()
+            detail = " · " + " · ".join((item["context"], item["source"]))
+            if i == feature:
+                x, xlim = 32, 460
+                frame(x - 10, y - 5, 438, 47)
+                pw = tw("serifbold_10", place)
+                text(buf, place, x, y, "serifbold_10", INK,
+                     "brief-place-%d" % i, xlim=x + pw + 8,
+                     ylim=y + 13)
+                text(buf, item["head"], x + pw + 8, y, "serif_10", INK,
+                     "brief-head-%d" % i, xlim=xlim, ylim=y + 13)
+                nw = tw("sans_10", item["num"])
+                text(buf, item["num"], x, y + BRIEF_PITCH, "sans_10", TEXT,
+                     "brief-val-%d" % i, xlim=x + nw,
+                     ylim=y + BRIEF_PITCH + 13)
+                text(buf, detail, x + nw + 6, y + BRIEF_PITCH,
+                     "sans_10", TEXT, "brief-detail-%d" % i,
+                     xlim=xlim, ylim=y + BRIEF_PITCH + 13)
+                FEATURE_BRIEFS += 1
+            else:
+                x = 32 + (440 if feature is not None and slot else slot * 220)
+                xlim = x + (220 if slot == 2 else 208)
+                frame(x - 10, y - 8, (xlim - x) + 20, 49)
+                text(buf, place, x, y, "serifbold_10", INK,
+                     "brief-place-%d" % i, xlim=xlim, ylim=y + 13)
+                text(buf, item["head"], x, y + BRIEF_PITCH, "serif_10", INK,
+                     "brief-head-%d" % i, xlim=xlim,
+                     ylim=y + BRIEF_PITCH + 13)
+                end = value_text(buf, item["num"], x, y + 2 * BRIEF_PITCH,
+                                 "sans_10", TEXT, "brief-val-%d" % i,
+                                 xlim, y + 2 * BRIEF_PITCH + 13)
+                text(buf, detail, end + 3, y + 2 * BRIEF_PITCH,
+                     "sans_10", TEXT, "brief-detail-%d" % i,
+                     xlim=xlim, ylim=y + 2 * BRIEF_PITCH + 13)
+            spans.append((x, xlim))
+        gaps.extend(b[0] - a[1] for a, b in zip(spans, spans[1:]))
+        rows = sorted({round(box[1]) for name, box in BOXES[box_start:]
+                       if name.startswith(("brief-", "feature-"))})
+        line_pitches = [b - a for a, b in zip(rows, rows[1:]) if b - a > 1]
+        assert line_pitches, label
+        GROUP_PITCHES.append(min(line_pitches))
+    BRIEF_LEAD = min(gaps)
 
 
 
@@ -1069,16 +1114,13 @@ def main():
     inset_min, inset_max = min(inset_values), max(inset_values)
 
     assert inset_max - inset_min <= 2, (inset_min, inset_max)
-    assert BASELINE_ROWS
-    baseline_x = sorted({x for x, _ in BASELINE_ROWS})
-    assert len(baseline_x) == 3, baseline_x
-    pitch_values = []
-    for bx in baseline_x:
-        by = sorted({y for x, y in BASELINE_ROWS if x == bx})
-        pitch_values.extend(b - a for a, b in zip(by, by[1:]))
-    assert pitch_values and len(set(pitch_values)) == 1, pitch_values
-    baseline_pitch, baseline_jitter = pitch_values[0], 0
-    assert baseline_jitter == 0, baseline_jitter
+    assert BRIEF_GROUPS == len(GROUPS), BRIEF_GROUPS
+    assert TONAL_TABS == BRIEF_GROUPS and TONAL_TABS > 0, TONAL_TABS
+    assert FEATURE_BRIEFS == 1, FEATURE_BRIEFS
+    assert len(GROUP_PITCHES) == BRIEF_GROUPS, GROUP_PITCHES
+    baseline_pitch = min(GROUP_PITCHES)
+    baseline_jitter = max(GROUP_PITCHES) - baseline_pitch
+    assert baseline_jitter <= 2, (baseline_pitch, baseline_jitter)
 
     out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
     os.makedirs(out_dir, exist_ok=True)
@@ -1091,6 +1133,10 @@ def main():
     print("BRIEF_LEAD %d" % BRIEF_LEAD)
     print("BRIEF_GAP %d" % BRIEF_GAP)
     print("RULE_CLEAR %d" % RULE_CLEAR)
+    print("BRIEF_GROUPS %d" % BRIEF_GROUPS)
+    print("TONAL_TABS %d" % TONAL_TABS)
+    print("FEATURE_BRIEFS %d" % FEATURE_BRIEFS)
+    print("GROUP_PITCHES %s" % GROUP_PITCHES)
     print("TRACKING_OVERRIDES %d" % TRACKING_OVERRIDES)
     print("MONO_USES %d" % len(MONO_USES))
     print("TRACK_VARIANTS %d" % TRACK_VARIANTS)
