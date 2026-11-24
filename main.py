@@ -54,6 +54,11 @@ BRIEF_GROUPS = 0
 TONAL_TABS = 0
 FEATURE_BRIEFS = 0
 GROUP_FRAME = None
+COMPLETE_CARDS = 0
+THREAD_CARDS = 0
+ORPHAN_LABELS = 0
+CARD_OVERFLOW = 0
+CARD_FOOT_LINES = []
 TRACKING_OVERRIDES = 0
 SCALE_LEAD, SCALE_BODY = 30, 10
 ORPHANS = 0
@@ -94,20 +99,20 @@ LEADS = [
 
 CARDS = [
     {"place": "STRAIT OF HORMUZ", "head": "2 MORE TANKERS HIT BY MINES",
-     "num": "2", "detail": "SHIPPING RISK",
-     "context": "Lanes closed after second mining.",
+     "num": "2", "thread": "two",
+     "story": "Two more tankers were hit by mines, closing shipping lanes.",
      "source": "REUTERS", "status": "ONGOING", "art": "ship"},
     {"place": "KYIV REGION", "head": "DRONE STRIKES KILL 15", "num": "15",
-     "detail": "APARTMENT HIT",
-     "context": "Block hit; rescue teams search.",
+     "thread": "fifteen",
+     "story": "Fifteen died in a drone strike on an apartment block.",
      "source": "AP", "status": "REPORTED", "art": "skyline"},
     {"place": "ASIA MARKETS", "head": "AI-BUBBLE FEARS HIT ASIA",
-     "num": "-5.06%", "detail": "NIKKEI CLOSE",
-     "context": "Investors sell technology shares.",
+     "num": "-5.06%", "thread": "5.06",
+     "story": "Nikkei fell 5.06 percent as investors sold technology shares.",
      "source": "CNBC", "status": "REPORTED", "art": "chart"},
     {"place": "SAUDI ARABIA", "head": "HOUTHIS CLAIM OIL STRIKE", "num": "1",
-     "detail": "CLAIM, UNVERIFIED",
-     "context": "Strike claim still unconfirmed.",
+     "thread": "oil strike",
+     "story": "Houthis claimed one oil strike; the strike stayed unconfirmed.",
      "source": "AL JAZEERA", "status": "CLAIM", "art": "tower"},
 ]
 
@@ -316,6 +321,8 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
     FACES.add("serif" if key.startswith("serif") else key.split("_", 1)[0])
     if name.startswith("brief-place-"):
         BASELINE_ROWS.append((box[0], box[1]))
+    if name.startswith("card-foot-"):
+        CARD_FOOT_LINES.append(s)
     if name.startswith("brief-group-") and GROUP_FRAME is not None:
         candidates = [GROUP_FRAME]
     else:
@@ -893,6 +900,7 @@ def draw_lead(buf, edge, lead, ncol):
 
 
 def draw_card(buf, x, card, i):
+    global CARD_OVERFLOW
     w = 236
     frame(x, 430, 236, 228)
     fill_rect(buf, x, 438, w, 10, STATUS_COL[card["status"]])
@@ -914,12 +922,15 @@ def draw_card(buf, x, card, i):
     if len(lines) > 1:
         text(buf, lines[1], tx, 538, "serif_15", MID, "card-head-%d-b" % i,
              xlim=text_x, ylim=558)
-    text(buf, card["context"], tx, 566, "sans_10", TEXT,
-         "card-context-%d" % i, xlim=lim, ylim=584)
-    text(buf, card["detail"], tx, 598, "sans_10", TEXT, "card-detail-%d" % i,
-         xlim=lim, ylim=612)
-    chip(buf, tx, 620, STATUS_COL[card["status"]])
-    text(buf, card["source"] + " · " + card["status"], tx + 12, 620,
+    story = wrap("serif_10", card["story"], lim - tx)
+    CARD_OVERFLOW += max(0, len(story) - 2)
+    for j, line in enumerate(story[:2]):
+        ly = 566 + j * 18
+        if tw("serif_10", line) > lim - tx:
+            CARD_OVERFLOW += 1
+        text(buf, line, tx, ly, "serif_10", TEXT,
+             "card-story-%d-%d" % (i, j), xlim=lim, ylim=ly + 14)
+    text(buf, card["source"] + " · " + card["status"], tx, 620,
          "sans_10", TEXT, "card-foot-%d" % i, xlim=lim, ylim=638)
 
 
@@ -1066,7 +1077,7 @@ def draw_ticker(buf):
             TICKER_LAST_Y, 976 + ink_rows("sans_8", pct)[1] + 1)
 
 def main():
-    global RULE_CLEAR, ORPHANS
+    global RULE_CLEAR, ORPHANS, COMPLETE_CARDS, THREAD_CARDS, ORPHAN_LABELS
     buf = bytearray(bytes(PAPER) * (W * H))
 
     n = len(LEADS) + len(CARDS) + len(BRIEFS)
@@ -1091,6 +1102,15 @@ def main():
     draw_pulse(buf, status)
     draw_markets(buf)
     draw_ticker(buf)
+    COMPLETE_CARDS = sum(1 for card in CARDS
+                         if 8 <= len(card["story"].split()) <= 14)
+    THREAD_CARDS = sum(1 for card in CARDS
+                       if card["thread"].lower() in card["story"].lower())
+    ORPHAN_LABELS = sum(1 for line in CARD_FOOT_LINES if " · " not in line)
+    assert COMPLETE_CARDS == 4, COMPLETE_CARDS
+    assert THREAD_CARDS == 4, THREAD_CARDS
+    assert ORPHAN_LABELS == 0, ORPHAN_LABELS
+    assert CARD_OVERFLOW == 0, CARD_OVERFLOW
     assert SCALE_LEAD / SCALE_BODY >= 3.0, (SCALE_LEAD, SCALE_BODY)
     assert ORPHANS == 0, ORPHANS
     assert MAP_LABELS == 5, MAP_LABELS
@@ -1133,6 +1153,10 @@ def main():
     print("BRIEF_LEAD %d" % BRIEF_LEAD)
     print("BRIEF_GAP %d" % BRIEF_GAP)
     print("RULE_CLEAR %d" % RULE_CLEAR)
+    print("COMPLETE_CARDS %d" % COMPLETE_CARDS)
+    print("THREAD_CARDS %d" % THREAD_CARDS)
+    print("ORPHAN_LABELS %d" % ORPHAN_LABELS)
+    print("CARD_OVERFLOW %d" % CARD_OVERFLOW)
     print("BRIEF_GROUPS %d" % BRIEF_GROUPS)
     print("TONAL_TABS %d" % TONAL_TABS)
     print("FEATURE_BRIEFS %d" % FEATURE_BRIEFS)
