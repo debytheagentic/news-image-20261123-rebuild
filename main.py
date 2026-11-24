@@ -66,6 +66,8 @@ METRIC_SIZES = []
 CAP_TRACK = 0
 MAX_CAP_PX = 0
 CAP_FACES = set()
+BODY_FACE = "serif"
+BODY_SIZES = set()
 TRACKING_OVERRIDES = 0
 SCALE_LEAD, SCALE_BODY = 30, 10
 ORPHANS = 0
@@ -128,7 +130,7 @@ BRIEFS = [
     {"place": "WASHINGTON", "head": "DEMOCRATS WIN HOUSE", "num": "11",
      "context": "DEC funding", "source": "REUTERS"},
     {"place": "GENEVA", "head": "ROBOT RULES BACKED", "num": "128",
-     "context": "nations; by 2028", "source": "REUTERS"},
+     "context": "by 2028", "source": "REUTERS"},
     {"place": "KHARTOUM", "head": "DRONE HITS UN SITE", "num": "3",
      "context": "killed", "source": "AL JAZEERA"},
     {"place": "CALIFORNIA", "head": "CONCERT SHOOTING", "num": "9",
@@ -142,13 +144,13 @@ BRIEFS = [
     {"place": "MOTOGP", "head": "MARQUEZ WINS TITLE", "num": "8TH",
      "context": "2026 season", "source": "REUTERS"},
     {"place": "NA / PENTAGON", "head": "CHINA WARHEADS", "num": "1K+",
-     "context": "warheads by 2030", "source": "AP DESK"},
+     "context": "by 2030", "source": "AP DESK"},
     {"place": "OC / NEW ZEALAND", "head": "VOTE TOO CLOSE", "num": "27",
      "context": "Nov recount", "source": "OC DESK"},
     {"place": "ME / BAHRAIN", "head": "IRAN STRUCK SITE", "num": "0",
-     "context": "civilian; none hurt", "source": "ME DESK"},
+     "context": "none hurt", "source": "ME DESK"},
     {"place": "ME / IRAN", "head": "TWO DRONES DOWN", "num": "2",
-     "context": "US drones claimed", "source": "ME DESK"},
+     "context": "drones claimed", "source": "ME DESK"},
     {"place": "YEMEN", "head": "SANAA DEPOT", "num": "6",
      "context": "hurt", "source": "ME DESK"},
     {"place": "PERU", "head": "ANDES QUAKE", "num": "M6.7",
@@ -298,6 +300,7 @@ def frame(x, y, w, h):
 def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
          tracking=0):
     global TRACK_VARIANTS, FACES, CAP_TRACK, MAX_CAP_PX, CAP_FACES
+    global BODY_SIZES
     if not s:
         return 0
     if tracking not in (0, 1):
@@ -327,15 +330,24 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
     elif key.startswith("sans_"):
         WEIGHTS["tertiary"] += 1
     FACES.add("serif" if key.startswith("serif") else key.split("_", 1)[0])
+    wire_body = (name.startswith("wire-val-")
+                 or (name.startswith("wire-") and name[5:].isdigit()))
     cap_label = (s.upper() == s and any(c.isalpha() for c in s)
                  and name not in ("masthead", "mast-deck")
                  and not name.startswith(("lead-head", "card-head",
-                                          "brief-head")))
+                                          "brief-head", "lead-detail",
+                                          "brief-detail", "map-list",
+                                          "mkt-lab-", "tick-lab-"))
+                 and not wire_body)
     if cap_label:
         CAP_TRACK += tracking
         MAX_CAP_PX = max(MAX_CAP_PX, int(key.rsplit("_", 1)[1]))
         CAP_FACES.add("serif" if key.startswith("serif")
                       else key.split("_", 1)[0])
+    if (wire_body or name.startswith(("lead-detail", "brief-detail",
+                                      "map-list", "mkt-lab-", "tick-lab-"))):
+        assert key.startswith("serif_"), (name, key)
+        BODY_SIZES.add(int(key.rsplit("_", 1)[1]))
     if name.startswith("brief-place-"):
         BASELINE_ROWS.append((box[0], box[1]))
     if name.startswith("card-foot-"):
@@ -626,7 +638,7 @@ def draw_map(buf):
     fill_rect(buf, 712, 786, 272, 16, PAPER)
     text(buf, " · ".join(PINS[i][1] + " " + PINS[i][0].upper()
                          for i in range(visible, len(PINS))),
-         714, 790, "sans_8", INK, "map-list", xlim=984, ylim=800)
+         714, 790, "serif_8", INK, "map-list", xlim=984, ylim=800)
 
 
 def market_path(buf):
@@ -905,7 +917,7 @@ def draw_lead(buf, edge, lead, ncol):
             text(buf, ln, px, ly, "serif_10", TEXT,
                  "lead-body-%d-%d-%d" % (ncol, col, j),
                  xlim=px + body_w + 24, ylim=ly + 14)
-    text(buf, lead["detail"], tx, detail_y, "sans_10", TEXT,
+    text(buf, lead["detail"], tx, detail_y, "serif_10", TEXT,
          "lead-detail-%d" % ncol, xlim=head_lim, ylim=detail_y + 20)
     chip(buf, tx, foot_y, STATUS_COL[lead["status"]])
     text(buf, lead["source"] + " · " + lead["status"], tx + 12, foot_y,
@@ -1000,7 +1012,7 @@ def draw_briefs(buf):
                      "brief-val-%d" % i, xlim=x + nw,
                      ylim=y + BRIEF_PITCH + 13)
                 text(buf, detail, x + nw + 6, y + BRIEF_PITCH,
-                     "sans_10", TEXT, "brief-detail-%d" % i,
+                     "serif_10", TEXT, "brief-detail-%d" % i,
                      xlim=xlim, ylim=y + BRIEF_PITCH + 13)
                 FEATURE_BRIEFS += 1
             else:
@@ -1016,7 +1028,7 @@ def draw_briefs(buf):
                                  "sans_10", TEXT, "brief-val-%d" % i,
                                  xlim, y + 2 * BRIEF_PITCH + 13)
                 text(buf, detail, end + 3, y + 2 * BRIEF_PITCH,
-                     "sans_10", TEXT, "brief-detail-%d" % i,
+                     "serif_10", TEXT, "brief-detail-%d" % i,
                      xlim=xlim, ylim=y + 2 * BRIEF_PITCH + 13)
             spans.append((x, xlim))
         gaps.extend(b[0] - a[1] for a, b in zip(spans, spans[1:]))
@@ -1044,7 +1056,7 @@ def draw_markets(buf):
         x, y = 28 + col * 332, 911 + row * 12
         frame(18, y - 8, 684, 26)
         c = GAIN if up else CRISIS
-        text(buf, label, x, y, "sans_10", INK, "mkt-lab-%d" % i,
+        text(buf, label, x, y, "serif_10", INK, "mkt-lab-%d" % i,
              xlim=x + 58, ylim=y + 12)
         value_text(buf, value, x + 58, y, "sans_10", INK,
                    "mkt-val-%d" % i, xlim=x + 130, ylim=y + 12)
@@ -1065,12 +1077,12 @@ def draw_wire(buf):
     for i in range(3):
         item = BRIEFS[15 + i]
         y = ALSO_TOP + 6 + i * 10
-        nw = tw("sans_8", item["num"])
-        text(buf, item["num"], 50 - nw, y, "sans_8", TEXT,
+        nw = tw("serif_8", item["num"])
+        text(buf, item["num"], 50 - nw, y, "serif_8", TEXT,
              "wire-val-%d" % (15 + i), xlim=50, ylim=y + 10)
         s = "%s %s · %s · %s" % (item["place"], item["head"],
                                  item["context"], item["source"])
-        text(buf, s, 54, y, "sans_8", TEXT,
+        text(buf, s, 54, y, "serif_8", TEXT,
              "wire-%d" % (15 + i), xlim=996, ylim=y + 10)
 
 
@@ -1093,9 +1105,9 @@ def draw_ticker(buf):
     for i, (label, value, pct, up) in enumerate(TICKER):
         x = 28 + i * 160
         c = GAIN_ON if up else RED_ON
-        text(buf, label, x, 976, "sans_8", PAPER, "tick-lab-%d" % i,
+        text(buf, label, x, 976, "serif_8", PAPER, "tick-lab-%d" % i,
              xlim=x + 48, ylim=986)
-        end = x + tw("sans_8", label) + 3
+        end = x + tw("serif_8", label) + 3
         end = value_text(buf, value, end, 976, "sans_8", PAPER,
                          "tick-val-%d" % i, xlim=x + 118, ylim=986)
         end += 6
@@ -1147,6 +1159,8 @@ def main():
     assert CAP_TRACK == 0, CAP_TRACK
     assert MAX_CAP_PX <= 11, MAX_CAP_PX
     assert CAP_FACES == {"sans"}, CAP_FACES
+    assert BODY_FACE == "serif", BODY_FACE
+    assert sorted(BODY_SIZES) == [8, 10], sorted(BODY_SIZES)
     assert ORPHANS == 0, ORPHANS
     assert MAP_LABELS == 5, MAP_LABELS
     assert n >= 22, n
@@ -1199,6 +1213,8 @@ def main():
     print("CAP_TRACK %d" % CAP_TRACK)
     print("MAX_CAP_PX %d" % MAX_CAP_PX)
     print("CAP_FACES %s" % sorted(CAP_FACES))
+    print("BODY_FACE %s" % BODY_FACE)
+    print("BODY_SIZES %s" % sorted(BODY_SIZES))
     print("BRIEF_GROUPS %d" % BRIEF_GROUPS)
     print("TONAL_TABS %d" % TONAL_TABS)
     print("FEATURE_BRIEFS %d" % FEATURE_BRIEFS)
