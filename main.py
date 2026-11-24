@@ -45,15 +45,14 @@ CRISIS = (179, 27, 27)
 DIPLO = (27, 77, 79)
 AMBER = (185, 142, 44)
 TINT = (226, 217, 204)
-COL_SEP = (226, 232, 240)
 SLOPE = (("6,910.39", "-3.70%", False, 2, 2),
          ("56,436", "-5.06%", False, 1, 3),
          ("$3,515", "-3%", False, 3, 1),
          ("$92.57", "+0.64%", True, 4, 0),
          ("$58,831", "-5.1%", False, 0, 4))
 SOURCES = ("REUTERS", "AP", "AL JAZEERA", "THE HINDU", "DETIK", "CNBC")
-BRIEF_PITCH = 15
-BRIEF_GAP = 6
+BRIEF_PITCH = 16
+BRIEF_GAP = 8
 TRACKING_OVERRIDES = 0
 
 BOXES = []
@@ -117,18 +116,18 @@ BRIEFS = [
      "context": "civilian; none hurt", "source": "ME DESK"},
     {"place": "ME / IRAN", "head": "TWO DRONES DOWN", "num": "2",
      "context": "US drones claimed", "source": "ME DESK"},
-    {"place": "ME / YEMEN", "head": "SANAA DEPOT HIT", "num": "6",
-     "context": "hurt in strike", "source": "ME DESK"},
-    {"place": "LA / PERU", "head": "ANDES QUAKE", "num": "M6.7",
-     "context": "cost counted", "source": "LA DESK"},
-    {"place": "AP / IFFI", "head": "BRICS ROUNDTABLE", "num": "2026",
-     "context": "film festival", "source": "AP DESK"},
-    {"place": "EU / COP31", "head": "GUTERRES DISAPPOINTED", "num": "31",
-     "context": "talks failed", "source": "EU DESK"},
-    {"place": "LA / PANAMA", "head": "OBJECTED TO PACT", "num": "31",
-     "context": "COP31 pact", "source": "LA DESK"},
-    {"place": "FIJI / TONGA", "head": "EL NINO DROUGHT", "num": "2",
-     "context": "crisis level", "source": "OC DESK"},
+    {"place": "YEMEN", "head": "SANAA DEPOT", "num": "6",
+     "context": "hurt", "source": "ME DESK"},
+    {"place": "PERU", "head": "ANDES QUAKE", "num": "M6.7",
+     "context": "cost", "source": "LA DESK"},
+    {"place": "AP/IFFI", "head": "BRICS", "num": "2026",
+     "context": "festival", "source": "AP DESK"},
+    {"place": "COP31", "head": "TALKS FAIL", "num": "31",
+     "context": "no pact", "source": "EU DESK"},
+    {"place": "PANAMA", "head": "PACT OBJECTED", "num": "31",
+     "context": "COP31", "source": "LA DESK"},
+    {"place": "FIJI/TONGA", "head": "DROUGHT", "num": "2",
+     "context": "crisis", "source": "OC DESK"},
 ]
 
 # Grounded in the entry_4 artifact of this competition: Fri 20 Nov close.
@@ -627,33 +626,44 @@ def draw_masthead(buf, n):
 
 def draw_lead(buf, edge, lead, ncol):
     x, lim = edge
-    tx = x + 10
+    tx = x
     fill_rect(buf, tx, 176, 96, 2, RED)
     kw = tw("serifbold_15", lead["kicker"])
     text(buf, lead["kicker"], tx, 182, "serifbold_15", INK,
          "lead-kicker-%d" % ncol, xlim=tx + kw, ylim=200)
-    fill_rect(buf, tx, 200, kw, 1, RULE)
     text(buf, lead["place"], tx + kw + 8, 184, "sans_10", TEXT,
          "lead-place-%d" % ncol, xlim=lim, ylim=202)
     text(buf, lead["head"][0], tx, 202, "serifbold_28", INK,
-         "lead-head-%d-a" % ncol, xlim=lim - 76, ylim=238)
+         "lead-head-%d-a" % ncol, xlim=lim - 24, ylim=238)
     text(buf, lead["head"][1], tx, 238, "serifbold_28", INK,
-         "lead-head-%d-b" % ncol, xlim=lim - 76, ylim=274)
-    fill_rect(buf, tx, 276, 96, 1, RULE)
-    lines = wrap("serifbold_15", lead["context"], lim - tx - 12)
-    if len(lines) > 2:
-        audit_fail("lead-context-%d" % ncol, len(lines) - 2)
-    text(buf, lines[0], tx, 282, "serifbold_15", TEXT,
-         "lead-context-%d-a" % ncol, xlim=lim, ylim=302)
-    if len(lines) > 1:
-        text(buf, lines[1], tx, 304, "serifbold_15", TEXT,
-             "lead-context-%d-b" % ncol, xlim=lim, ylim=324)
-    text(buf, lead["detail"], tx, 334, "sans_12", TEXT,
-         "lead-detail-%d" % ncol, xlim=lim, ylim=354)
-    fill_rect(buf, tx, 358, 96, 1, RULE)
-    chip(buf, tx, 374, STATUS_COL[lead["status"]])
-    text(buf, lead["source"] + " · " + lead["status"], tx + 12, 374,
-         "sans_10", TEXT, "lead-foot-%d" % ncol, xlim=lim, ylim=394)
+         "lead-head-%d-b" % ncol, xlim=lim - 24, ylim=274)
+    if ncol == 0:
+        for col, (px, part) in enumerate(zip((tx, tx + 304),
+                                             lead["context"].split(". "))):
+            lines = wrap("serifbold_15", part, 268)
+            if len(lines) > 2:
+                audit_fail("lead-body-%d-%d" % (ncol, col), len(lines) - 2)
+            for j, ln in enumerate(lines):
+                ly = 282 + j * 22
+                text(buf, ln, px, ly, "serifbold_15", TEXT,
+                     "lead-body-%d-%d-%d" % (ncol, col, j),
+                     xlim=px + 272, ylim=ly + 20)
+    else:
+        lines = wrap("serifbold_15", lead["context"], lim - tx - 12)
+        if len(lines) > 3:
+            audit_fail("lead-body-%d" % ncol, len(lines) - 3)
+        for j, ln in enumerate(lines):
+            ly = 282 + j * 22
+            text(buf, ln, tx, ly, "serifbold_15", TEXT,
+                 "lead-body-%d-%d" % (ncol, j), xlim=lim, ylim=ly + 20)
+    dy = 330 if ncol == 0 else 347
+    text(buf, lead["detail"], tx, dy, "sans_12", TEXT,
+         "lead-detail-%d" % ncol, xlim=lim, ylim=dy + 20)
+    chip(buf, tx, 382, STATUS_COL[lead["status"]])
+    text(buf, lead["source"] + " · " + lead["status"], tx + 12, 382,
+         "sans_10", TEXT, "lead-foot-%d" % ncol, xlim=lim, ylim=400)
+
+
 
 
 
@@ -661,16 +671,16 @@ def draw_card(buf, x, card, i):
     w = 236
     fill_rect(buf, x, 438, w, 1, RULE)
     lim = x + w - 10
-    tx = x + 10
+    tx = x + 4
     art_x = x + w - 70
-    text_x = lim - 72
+    text_x = tx + 144
     text(buf, card["place"], tx, 447, "sans_10", INK, "card-place-%d" % i,
          xlim=lim, ylim=465)
     text(buf, card["num"], tx, 476, "serifbold_15",
          STATUS_COL[card["status"]], "card-num-%d" % i,
          xlim=text_x, ylim=496)
     spot(buf, art_x, 474, card["art"], INK)
-    lines = wrap("sans_15", card["head"], w - 92)
+    lines = wrap("sans_15", card["head"], 144)
     if len(lines) > 2:
         audit_fail("card-head-%d" % i, len(lines) - 2)
     text(buf, lines[0], tx, 516, "sans_15", INK, "card-head-%d-a" % i,
@@ -680,7 +690,6 @@ def draw_card(buf, x, card, i):
              xlim=text_x, ylim=558)
     text(buf, card["context"], tx, 566, "sans_10", TEXT,
          "card-context-%d" % i, xlim=lim, ylim=584)
-    fill_rect(buf, tx, 590, 64, 1, RULE)
     text(buf, card["detail"], tx, 598, "sans_10", TEXT, "card-detail-%d" % i,
          xlim=lim, ylim=612)
     chip(buf, tx, 620, STATUS_COL[card["status"]])
@@ -690,45 +699,47 @@ def draw_card(buf, x, card, i):
 
 
 
+
+
 def draw_briefs(buf):
-    text(buf, "MORE IN BRIEF / 23 NOV", 32, 664, "sans_10", RED, "briefs-head",
-         xlim=692, ylim=680)
-    fill_rect(buf, 32, 684, 660, 6, RED)
-    for gx in (248, 468):
-        fill_rect(buf, gx, 688, 1, 246, COL_SEP)
-    for i, item in enumerate(BRIEFS[:15]):
+    text(buf, "MORE IN BRIEF / 23 NOV", 32, 664, "serifbold_15", RED,
+         "briefs-head", xlim=300, ylim=682)
+    for i, item in enumerate(BRIEFS[:12]):
         row, col = divmod(i, 3)
         x = 32 + col * 220
-        y = 694 + row * (2 * BRIEF_PITCH + BRIEF_GAP + 7)
-        xlim = x + (220 if col == 2 else 212)
+        y = 694 + row * (2 * BRIEF_PITCH + BRIEF_GAP + 9)
+        xlim = x + (220 if col == 2 else 208)
         text(buf, item["place"], x, y, "sans_10", INK,
-             "brief-place-%d" % i, xlim=xlim, ylim=y + 12)
+             "brief-place-%d" % i, xlim=xlim, ylim=y + 13)
         text(buf, item["head"], x, y + BRIEF_PITCH, "sans_10", INK,
-             "brief-head-%d" % i, xlim=xlim, ylim=y + 27)
+             "brief-head-%d" % i, xlim=xlim, ylim=y + 28)
         detail = " · ".join((item["num"], item["context"], item["source"]))
         text(buf, detail, x, y + 2 * BRIEF_PITCH, "sans_10", TEXT,
-             "brief-detail-%d" % i, xlim=xlim, ylim=y + 42)
+             "brief-detail-%d" % i, xlim=xlim, ylim=y + 44)
+
+
 
 
 def draw_lead_briefs(buf):
-    """Three overflow briefs in the existing two-column lead field."""
-    for i, (x, y) in enumerate(((38, 347), (38, 362), (588, 347))):
-        item = BRIEFS[15 + i]
-        s = " · ".join((item["place"], item["head"], item["num"],
-                        item["context"], item["source"]))
-        text(buf, s, x, y, "sans_10", TEXT, "lead-brief-%d" % (15 + i),
-             xlim=566 if x < 500 else 986, ylim=y + 12)
+    """Three overflow briefs in the wide lead's two-column deck field."""
+    slots = ((32, 347, 300), (32, 362, 300), (336, 347, 604))
+    for i, (x, y, xlim) in enumerate(slots):
+        item = BRIEFS[12 + i]
+        s = "%s · %s %s · %s · %s" % (item["place"], item["head"],
+                                     item["num"], item["context"], item["source"])
+        text(buf, s, x, y, "sans_10", TEXT, "lead-brief-%d" % (12 + i),
+             xlim=xlim, ylim=y + 12)
 
 
 def draw_markets(buf):
     """Compact grounded index strip above the ticker."""
     fill_rect(buf, 28, 942, 664, 44, CARD)
     fill_rect(buf, 28, 942, 664, 1, INK)
-    text(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 942, "sans_10", INK,
-         "markets-head", xlim=692, ylim=954)
+    text(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 942, "serifbold_15", INK,
+         "markets-head", xlim=692, ylim=958)
     for i, (label, value, pct, up) in enumerate(TICKER):
         col, row = divmod(i, 3)
-        x, y = 28 + col * 332, 952 + row * 12
+        x, y = 28 + col * 332, 958 + row * 12
         c = GAIN if up else CRISIS
         text(buf, label, x, y, "sans_10", INK, "mkt-lab-%d" % i,
              xlim=x + 58, ylim=y + 12)
@@ -740,31 +751,33 @@ def draw_markets(buf):
              xlim=x + 190, ylim=y + 12)
 
 
-def draw_glance(buf, n):
-    """Four-cell computed tally strip; no fills, only type and hairlines."""
-    cells = ((str(n), "STORIES"), (str(len(BRIEFS)), "BRIEFS"),
-             (str(len(SOURCES)), "SOURCES"), (str(len(PINS)), "PINS"))
-    for i, (num, cap) in enumerate(cells):
-        cx = 40 + i * 240
-        text(buf, num, cx, 396, "serifbold_24", INK, "glance-num-%d" % i,
-             xlim=cx + 84, ylim=420)
-        text(buf, cap, cx, 417, "sans_10", TEXT, "glance-cap-%d" % i,
-             xlim=cx + 116, ylim=430)
-        if i:
-            fill_rect(buf, cx - 10, 396, 1, 32, RULE)
+
+
+def draw_wire(buf):
+    """Full-width overflow wire strip between the leads and the cards."""
+    text(buf, "ALSO REPORTED", 32, 390, "serifbold_15", RED, "wire-head",
+         xlim=220, ylim=408)
+    for i, x in enumerate((32, 352, 672)):
+        item = BRIEFS[15 + i]
+        s = "%s · %s %s · %s · %s" % (item["place"], item["head"],
+                                     item["num"], item["context"], item["source"])
+        text(buf, s, x, 410, "sans_10", TEXT, "wire-%d" % (15 + i),
+             xlim=x + 300, ylim=424)
+
+
 
 
 def draw_slope(buf):
     """Friday close to daily move, paired by grounded market rank."""
     ax_l, ax_r = 766, 950
-    text(buf, "CLOSE", 720, 896, "sans_8", TEXT, "slope-axis-l",
-         xlim=ax_l, ylim=906)
-    text(buf, "MOVE", 910, 896, "sans_8", TEXT, "slope-axis-r",
-         xlim=ax_r, ylim=906)
+    text(buf, "CLOSE", 720, 900, "sans_8", TEXT, "slope-axis-l",
+         xlim=ax_l, ylim=910)
+    text(buf, "MOVE", 910, 900, "sans_8", TEXT, "slope-axis-r",
+         xlim=ax_r, ylim=910)
     line(buf, ax_l, 904, ax_l, 944, AXIS_STRONG)
     line(buf, ax_r, 904, ax_r, 944, AXIS_STRONG)
     for i, (value, pct, up, lr, rr) in enumerate(SLOPE):
-        y0, y1 = 906 + lr * 8, 906 + rr * 8
+        y0, y1 = 908 + lr * 8, 908 + rr * 8
         c = GAIN if up else CRISIS
         line(buf, ax_l + 1, y0 + 4, ax_r - 1, y1 + 4, c)
         disc(buf, ax_l, y0 + 4, 1, c)
@@ -785,7 +798,7 @@ def draw_pulse(buf, status):
     ruled_bars(buf, status)
     draw_slope(buf)
     fill_rect(buf, x, y, w, 1, RULE)
-    text(buf, "MARKET PULSE / SLOPE CHART", x + 8, y + 6, "sans_10", INK,
+    text(buf, "MARKET PULSE", x + 8, y + 6, "serifbold_15", INK,
          "pulse-head", xlim=x + w - 8, ylim=y + 24)
     text(buf, "STORY COUNT", 708, 948, "sans_10", INK, "stack-head",
          xlim=860, ylim=966)
@@ -833,15 +846,10 @@ def main():
 
     draw_masthead(buf, n)
     fill_rect(buf, 0, 162, W, 267, CARD)
-    for gx in (268, 512, 756):
-        fill_rect(buf, gx, 446, 1, 194, COL_SEP)
-    fill_rect(buf, 572, 176, 1, 240, COL_SEP)
-    for i, lead in enumerate(LEADS):
-        draw_lead(buf, (28, 566) if i == 0 else (578, 986), lead, i)
+    draw_lead(buf, (32, 628), LEADS[0], 0)
+    draw_lead(buf, (640, 996), LEADS[1], 1)
     draw_lead_briefs(buf)
-
-
-    draw_glance(buf, n)
+    draw_wire(buf)
     for i, card in enumerate(CARDS):
         draw_card(buf, 28 + i * 244, card, i)
     draw_briefs(buf)
