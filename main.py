@@ -51,6 +51,12 @@ BRIEF_ROW_PITCH = 41
 TRACKING_OVERRIDES = 0
 SCALE_LEAD, SCALE_BODY = 30, 10
 ORPHANS = 0
+TRACK_STATES = {0}
+TRACK_VARIANTS = 1
+FACES = set()
+FRAMES = []
+INSETS = []
+BASELINE_ROWS = []
 
 BOXES = []
 RULES = []
@@ -208,7 +214,7 @@ def border(buf, x, y, w, h, c, reg=True):
         RULES.append((x + w - 1, y, x + w, y + h))
 
 
-def blit(buf, s, x, y, key, fg, top, bot, slant=0):
+def blit(buf, s, x, y, key, fg, top, bot, slant=0, tracking=0):
     h, stride, widths, offsets, mask = font(key)
     fr, fg2, fb = fg
     pen = x
@@ -232,7 +238,7 @@ def blit(buf, s, x, y, key, fg, top, bot, slant=0):
                 buf[j] = (fr * a + buf[j] * (255 - a) + 127) // 255
                 buf[j + 1] = (fg2 * a + buf[j + 1] * (255 - a) + 127) // 255
                 buf[j + 2] = (fb * a + buf[j + 2] * (255 - a) + 127) // 255
-        pen += widths[gi]
+        pen += widths[gi] + tracking
     return pen - x
 
 
@@ -258,10 +264,22 @@ def audit_fail(name, over):
     sys.exit(1)
 
 
-def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0):
+def frame(x, y, w, h):
+    FRAMES.append((x, y, x + w, y + h))
+
+
+def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
+         tracking=0):
+    global TRACK_VARIANTS, FACES
     if not s:
         return 0
-    w = tw(key, s) + slant
+    if tracking not in (0, 1):
+        audit_fail(name, tracking)
+    if tracking and not (s.upper() == s and any(c.isalpha() for c in s)):
+        audit_fail(name, tracking)
+    TRACK_STATES.add(tracking)
+    TRACK_VARIANTS = len(TRACK_STATES)
+    w = tw(key, s) + slant + tracking * (len(s) - 1)
     if x < 28:
         audit_fail(name, 28 - x)
     if x + w > xlim:
@@ -281,12 +299,30 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0):
         WEIGHTS["secondary"] += 1
     elif key.startswith("sans_"):
         WEIGHTS["tertiary"] += 1
+    FACES.add("serif" if key.startswith("serif") else key.split("_", 1)[0])
+    if name.startswith("brief-place-"):
+        BASELINE_ROWS.append((box[0], box[1]))
+    candidates = [f for f in FRAMES
+                  if box[0] >= f[0] and box[2] <= f[2]
+                  and box[1] >= f[1] and box[3] <= f[3]]
+    anchored = not name.startswith(("pin-", "plate-", "wire-", "map-lat-",
+                                    "map-lon-", "map-north", "map-scale",
+                                    "spot-", "lead-body-", "lead-place-",
+                                    "lead-foot-", "lead-detail-", "mkt-val-",
+                                    "mkt-pct-", "brief-detail-", "card-foot-",
+                                    "card-detail-", "mast-stories",
+                                    "mast-source-label"))
+    anchored = anchored and not name.endswith("-unit")
+    if candidates and anchored:
+        fx0, fy0, fx1, fy1 = min(candidates, key=lambda f: f[2] * f[3])
+        INSETS.append((name, min(box[0] - fx0, fx1 - box[2],
+                                 box[1] - fy0, fy1 - box[3])))
     for other, ob in BOXES:
         if box[0] < ob[2] and box[2] > ob[0] and box[1] < ob[3] and box[3] > ob[1]:
             print("OVERLAP %s vs %s" % (name, other))
             sys.exit(1)
     BOXES.append((name, box))
-    blit(buf, s, x, y, key, fg, top, bot, slant)
+    blit(buf, s, x, y, key, fg, top, bot, slant, tracking)
     return w
 
 
@@ -470,6 +506,7 @@ def plate_width(place):
 def draw_map(buf):
     global MAP_LABEL_GAP, MAP_LABELS
     x, y, w, h = 706, 642, 290, 172
+    frame(x, y, w, h)
     fill_rect(buf, x, y, w, h, PAPER)
     border(buf, x, y, w, h, RULE)
     border(buf, x + 6, y + 6, w - 12, h - 12, RULE, reg=False)
@@ -750,6 +787,11 @@ def draw_masthead(buf, n):
     fill_rect(buf, 24, 152, 976, 3, RULE)
     fill_rect(buf, 24, 155, 976, 2, PAPER)
     fill_rect(buf, 24, 157, 976, 1, RULE)
+    frame(22, 24, 978, 132)
+    frame(24, 76, 600, 40)
+    frame(24, 103, 400, 34)
+    frame(630, 36, 360, 40)
+    frame(630, 88, 360, 50)
     text(buf, "WORLD IN ONE PAGE", 32, 32, "serifbold_48", CREAM, "masthead")
     text(buf, "A DAY OF DISASTER, DIPLOMACY AND MARKETS", 34, 84,
          "serifbold_15", CREAM, "mast-deck", xlim=620, ylim=108)
@@ -775,6 +817,10 @@ def draw_masthead(buf, n):
 
 def draw_lead(buf, edge, lead, ncol):
     x, lim = edge
+    if ncol == 0:
+        frame(46, 178, 566, 194)
+    else:
+        frame(630, 174, 366, 218)
     if ncol == 0:
         tx = 56
         head_lim = 600
@@ -831,11 +877,12 @@ def draw_lead(buf, edge, lead, ncol):
 
 def draw_card(buf, x, card, i):
     w = 236
+    frame(x, 430, 236, 228)
     fill_rect(buf, x, 438, w, 10, STATUS_COL[card["status"]])
     lim = x + w - 10
-    tx = x + 4
+    tx = x + 10
     art_x = x + w - 54
-    text_x = tx + 162
+    text_x = tx + 168
     text(buf, card["place"], tx, 447, "sans_10", INK, "card-place-%d" % i,
          xlim=lim, ylim=465)
     value_text(buf, card["num"], tx, 476, "serifbold_15",
@@ -869,6 +916,7 @@ def draw_briefs(buf):
         x = 32 + col * 220
         y = 688 + row * BRIEF_ROW_PITCH
         xlim = x + (220 if col == 2 else 208)
+        frame(x - 10, y - 8, (xlim - x) + 20, 55)
         place = item["place"].upper()
         text(buf, place, x, y, "serifbold_10", INK,
              "brief-place-%d" % i, xlim=xlim, ylim=y + 13)
@@ -900,6 +948,7 @@ def draw_briefs(buf):
 def draw_markets(buf):
     """Compact grounded index strip above the ticker."""
     fill_rect(buf, 28, 890, 664, 44, CARD)
+    frame(18, 886, 684, 56)
     fill_rect(buf, 28, 890, 664, 1, INK)
     fill_rect(buf, 28, 948, 664, 6, TEAL)
     section_head(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 890, 692,
@@ -907,6 +956,7 @@ def draw_markets(buf):
     for i, (label, value, pct, up) in enumerate(TICKER):
         col, row = divmod(i, 3)
         x, y = 28 + col * 332, 911 + row * 12
+        frame(18, y - 8, 684, 26)
         c = GAIN if up else CRISIS
         text(buf, label, x, y, "sans_10", INK, "mkt-lab-%d" % i,
              xlim=x + 58, ylim=y + 12)
@@ -922,6 +972,7 @@ def draw_markets(buf):
 
 def draw_wire(buf):
     """One ruled column with a fixed 18px right-aligned number gutter."""
+    frame(22, 362, 982, 80)
     section_head(buf, "ALSO REPORTED", 32, ALSO_TOP - 28, 220,
                  "wire-head", 28, 996)
     fill_rect(buf, 28, ALSO_TOP, 968, 1, RULE)
@@ -951,6 +1002,7 @@ def draw_pulse(buf, status):
 def draw_ticker(buf):
     global TICKER_LAST_Y
     fill_rect(buf, 24, 972, 976, 18, INK)
+    frame(18, 968, 988, 30)
     fill_rect(buf, 24, 972, 976, 4, (185, 151, 90))
     for i, (label, value, pct, up) in enumerate(TICKER):
         x = 28 + i * 160
@@ -1010,6 +1062,23 @@ def main():
                 clear, worst = gap, name
     RULE_CLEAR = clear
     assert clear >= 3, (clear, worst)
+    assert TRACK_VARIANTS <= 2, TRACK_VARIANTS
+    assert FACES <= {"serif", "sans"}, FACES
+    inset_values = [v for _, v in INSETS]
+    assert inset_values
+    inset_min, inset_max = min(inset_values), max(inset_values)
+
+    assert inset_max - inset_min <= 2, (inset_min, inset_max)
+    assert BASELINE_ROWS
+    baseline_x = sorted({x for x, _ in BASELINE_ROWS})
+    assert len(baseline_x) == 3, baseline_x
+    pitch_values = []
+    for bx in baseline_x:
+        by = sorted({y for x, y in BASELINE_ROWS if x == bx})
+        pitch_values.extend(b - a for a, b in zip(by, by[1:]))
+    assert pitch_values and len(set(pitch_values)) == 1, pitch_values
+    baseline_pitch, baseline_jitter = pitch_values[0], 0
+    assert baseline_jitter == 0, baseline_jitter
 
     out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
     os.makedirs(out_dir, exist_ok=True)
@@ -1024,6 +1093,11 @@ def main():
     print("RULE_CLEAR %d" % RULE_CLEAR)
     print("TRACKING_OVERRIDES %d" % TRACKING_OVERRIDES)
     print("MONO_USES %d" % len(MONO_USES))
+    print("TRACK_VARIANTS %d" % TRACK_VARIANTS)
+    print("INSET_MIN %d INSET_MAX %d" % (inset_min, inset_max))
+    print("BASELINE_PITCH %d BASELINE_JITTER %d"
+          % (baseline_pitch, baseline_jitter))
+    print("FACES %d" % len(FACES))
     assert all(WEIGHTS.values()), WEIGHTS
     print("WEIGHTS primary=%d secondary=%d tertiary=%d"
           % (WEIGHTS["primary"], WEIGHTS["secondary"], WEIGHTS["tertiary"]))
