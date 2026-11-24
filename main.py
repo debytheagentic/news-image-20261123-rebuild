@@ -30,6 +30,7 @@ TEAL = (15, 90, 87)
 DEEP = (105, 118, 130)
 RULE = (205, 197, 188)
 GAIN = (22, 101, 52)
+MUTED_CLAIM = (130, 95, 90)
 RED_ON = (234, 96, 96)
 GAIN_ON = (104, 208, 136)
 STATUS_COL = {"REPORTED": TEAL, "CLAIM": RED, "ONGOING": INK}
@@ -59,6 +60,9 @@ THREAD_CARDS = 0
 ORPHAN_LABELS = 0
 CARD_OVERFLOW = 0
 CARD_FOOT_LINES = []
+PRIORITY_BAR = 0
+QUIET_CARDS = 0
+METRIC_SIZES = []
 TRACKING_OVERRIDES = 0
 SCALE_LEAD, SCALE_BODY = 30, 10
 ORPHANS = 0
@@ -115,6 +119,7 @@ CARDS = [
      "story": "Houthis claimed one oil strike; the strike stayed unconfirmed.",
      "source": "AL JAZEERA", "status": "CLAIM", "art": "tower"},
 ]
+PRIORITY = "KYIV,COP31,HORMUZ,HOUTHI"
 
 BRIEFS = [
     {"place": "WASHINGTON", "head": "DEMOCRATS WIN HOUSE", "num": "11",
@@ -900,19 +905,32 @@ def draw_lead(buf, edge, lead, ncol):
 
 
 def draw_card(buf, x, card, i):
-    global CARD_OVERFLOW
+    global CARD_OVERFLOW, PRIORITY_BAR, QUIET_CARDS, METRIC_SIZES
     w = 236
     frame(x, 430, 236, 228)
     fill_rect(buf, x, 438, w, 10, STATUS_COL[card["status"]])
+    if i == 1:
+        fill_rect(buf, x, 438, 3, 220, CRISIS)
+        PRIORITY_BAR += 1
+    if card["status"] == "CLAIM":
+        for dx in range(0, w, 7):
+            fill_rect(buf, x + dx, 439, 4, 1, TINT)
+        QUIET_CARDS += 1
     lim = x + w - 10
     tx = x + 10
     art_x = x + w - 54
     text_x = tx + 168
     text(buf, card["place"], tx, 447, "sans_10", INK, "card-place-%d" % i,
          xlim=lim, ylim=465)
-    value_text(buf, card["num"], tx, 476, "serifbold_15",
-               STATUS_COL[card["status"]], "card-num-%d" % i,
-               text_x, 496)
+    metric_key = "serifbold_24" if i == 1 else "serifbold_15"
+    metric_col = (MUTED_CLAIM if card["status"] == "CLAIM"
+                  else STATUS_COL[card["status"]])
+    metric_y = 474 if i == 1 else 476
+    metric_lim = 500 if i == 1 else 496
+    METRIC_SIZES.append(int(metric_key.rsplit("_", 1)[1]))
+    value_text(buf, card["num"], tx, metric_y, metric_key,
+               metric_col, "card-num-%d" % i,
+               text_x, metric_lim)
     spot(buf, art_x, 474, card["art"], INK)
     lines = balanced_wrap("serif_15", card["head"], 168)
     if len(lines) > 2:
@@ -1111,7 +1129,9 @@ def main():
     assert THREAD_CARDS == 4, THREAD_CARDS
     assert ORPHAN_LABELS == 0, ORPHAN_LABELS
     assert CARD_OVERFLOW == 0, CARD_OVERFLOW
-    assert SCALE_LEAD / SCALE_BODY >= 3.0, (SCALE_LEAD, SCALE_BODY)
+    assert PRIORITY_BAR == 1, PRIORITY_BAR
+    assert QUIET_CARDS == 1, QUIET_CARDS
+    assert sorted(METRIC_SIZES, reverse=True) == [24, 15, 15, 15], METRIC_SIZES
     assert ORPHANS == 0, ORPHANS
     assert MAP_LABELS == 5, MAP_LABELS
     assert n >= 22, n
@@ -1157,6 +1177,10 @@ def main():
     print("THREAD_CARDS %d" % THREAD_CARDS)
     print("ORPHAN_LABELS %d" % ORPHAN_LABELS)
     print("CARD_OVERFLOW %d" % CARD_OVERFLOW)
+    print("PRIORITY %s" % PRIORITY)
+    print("PRIORITY_BAR %d" % PRIORITY_BAR)
+    print("METRIC_SIZES %s" % sorted(METRIC_SIZES, reverse=True))
+    print("QUIET_CARDS %d" % QUIET_CARDS)
     print("BRIEF_GROUPS %d" % BRIEF_GROUPS)
     print("TONAL_TABS %d" % TONAL_TABS)
     print("FEATURE_BRIEFS %d" % FEATURE_BRIEFS)
