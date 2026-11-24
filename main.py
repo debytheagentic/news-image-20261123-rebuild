@@ -96,7 +96,8 @@ RAIL_XS = frozenset((28, 32, 38, 56, 252, 282, 472, 526, 640, 682, 770))
 OFF_RAIL = 0
 BREAK_BALANCE = 0
 RAIL_LINE = (156, 660)
-LEAD_HEAD_PX = 36
+SPACE_ADV = 2
+BODY_OVERFLOW = 0
 BRIEF_LEAD = 0
 RULE_CLEAR = 0
 
@@ -124,7 +125,7 @@ CARDS = [
      "source": "AP", "status": "REPORTED", "art": "skyline"},
     {"place": "ASIA MARKETS", "head": "AI-BUBBLE FEARS HIT ASIA",
      "num": "-5.06%", "thread": "5.06",
-     "story": "Nikkei fell 5.06 percent as investors sold technology shares.",
+     "story": "Nikkei fell 5.06 percent as investors sold technology.",
      "source": "CNBC", "status": "REPORTED", "art": "chart"},
     {"place": "SAUDI ARABIA", "head": "HOUTHIS CLAIM OIL STRIKE", "num": "1",
      "thread": "oil strike",
@@ -157,7 +158,7 @@ BRIEFS = [
     {"place": "ME / BAHRAIN", "head": "IRAN STRUCK SITE", "num": "0",
      "context": "none hurt", "source": "ME DESK"},
     {"place": "ME / IRAN", "head": "TWO DRONES DOWN", "num": "2",
-     "context": "drones claimed", "source": "ME DESK"},
+     "context": "claimed", "source": "ME DESK"},
     {"place": "YEMEN", "head": "SANAA DEPOT", "num": "6",
      "context": "hurt", "source": "ME DESK"},
     {"place": "PERU", "head": "ANDES QUAKE", "num": "M6.7",
@@ -203,11 +204,13 @@ def font(key):
                        zlib.decompress(base64.b64decode(a["b64"])))
     return _FONTS[key]
 
+def space_bump(key, ch):
+    return SPACE_ADV if ch == " " and key.rsplit("_", 1)[-1] in ("8", "10") else 0
 
 def tw(key, s):
     widths = font(key)[2]
-    return sum(widths[_IDX[ch]] for ch in s if ch in _IDX)
-
+    return sum(widths[_IDX[ch]] + space_bump(key, ch)
+               for ch in s if ch in _IDX)
 
 def ink_rows(key, s):
     h, stride, widths, offsets, mask = font(key)
@@ -274,9 +277,8 @@ def blit(buf, s, x, y, key, fg, top, bot, slant=0, tracking=0):
                 buf[j] = (fr * a + buf[j] * (255 - a) + 127) // 255
                 buf[j + 1] = (fg2 * a + buf[j + 1] * (255 - a) + 127) // 255
                 buf[j + 2] = (fb * a + buf[j + 2] * (255 - a) + 127) // 255
-        pen += widths[gi] + tracking
+        pen += widths[gi] + tracking + space_bump(key, ch)
     return pen - x
-
 
 
 def edge_fail(name, over):
@@ -307,7 +309,7 @@ def frame(x, y, w, h):
 def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
          tracking=0):
     global TRACK_VARIANTS, FACES, CAP_TRACK, MAX_CAP_PX, CAP_FACES
-    global BODY_SIZES, OFF_RAIL
+    global BODY_SIZES, OFF_RAIL, BODY_OVERFLOW
     if not s:
         return 0
     if ((name.startswith(("lead-head-", "card-head-", "brief-place-"))
@@ -320,14 +322,20 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
     TRACK_STATES.add(tracking)
     TRACK_VARIANTS = len(TRACK_STATES)
     w = tw(key, s) + slant + tracking * (len(s) - 1)
+    body_line = (name.startswith(("lead-body-", "lead-detail-",
+                                  "card-story-", "brief-detail-",
+                                  "map-list"))
+                 or (name.startswith("wire-") and name[5:].isdigit()))
     if x < 28:
         audit_fail(name, 28 - x)
     if x + w > xlim:
+        BODY_OVERFLOW += body_line
         audit_fail(name, x + w - xlim)
     if y < 28:
         audit_fail(name, 28 - y)
     top, bot = ink_rows(key, s)
     if y + bot + 1 > ylim:
+        BODY_OVERFLOW += body_line
         audit_fail(name, y + bot + 1 - ylim)
     box = (x, y + top, x + w, y + bot + 1)
     edge_check(name, box)
@@ -893,7 +901,7 @@ def draw_lead(buf, edge, lead, ncol):
     if ncol == 0:
         tx = 56
         head_lim = 600
-        key = "serifbold_%d" % LEAD_HEAD_PX
+        key = "serifbold_30"
         head_y = (204, 248)
         body_y, detail_y, foot_y = 286, 330, 350
         body_cols, body_w = (56, 336), 268
@@ -1182,7 +1190,11 @@ def main():
     assert ORPHANS == 0, ORPHANS
     assert OFF_RAIL == 0, OFF_RAIL
     assert BREAK_BALANCE <= 55, BREAK_BALANCE
-    assert LEAD_HEAD_PX == 36, LEAD_HEAD_PX
+    assert SPACE_ADV == 2, SPACE_ADV
+    assert all(font(k)[2][_IDX[" "]] + SPACE_ADV == 8
+               for k in ("serif_8", "sans_8", "serif_10", "sans_10",
+                         "serifbold_10"))
+    assert BODY_OVERFLOW == 0, BODY_OVERFLOW
     assert MAP_LABELS == 5, MAP_LABELS
     assert n >= 22, n
     assert BRIEF_LEAD >= 5, BRIEF_LEAD
@@ -1224,10 +1236,11 @@ def main():
     print("OFF_RAIL %d" % OFF_RAIL)
     print("BREAK_BALANCE %d" % BREAK_BALANCE)
     print("RAIL_LINE %d-%d" % RAIL_LINE)
-    print("LEAD_HEAD_PX %d" % LEAD_HEAD_PX)
     print("BRIEF_LEAD %d" % BRIEF_LEAD)
     print("BRIEF_GAP %d" % BRIEF_GAP)
     print("RULE_CLEAR %d" % RULE_CLEAR)
+    print("SPACE_ADV %d" % SPACE_ADV)
+    print("BODY_OVERFLOW %d" % BODY_OVERFLOW)
     print("COMPLETE_CARDS %d" % COMPLETE_CARDS)
     print("THREAD_CARDS %d" % THREAD_CARDS)
     print("ORPHAN_LABELS %d" % ORPHAN_LABELS)
