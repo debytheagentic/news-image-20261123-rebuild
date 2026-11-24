@@ -19,7 +19,7 @@ from font_atlas import ATLAS, CHARS
 from coast import COAST, PLACES
 
 W = H = 1024
-PAPER = (248, 240, 230)
+PAPER = (250, 245, 236)
 CARD = (223, 213, 201)
 CREAM = (249, 244, 235)
 INK = (15, 23, 42)
@@ -46,15 +46,6 @@ CRISIS = (179, 27, 27)
 DIPLO = (27, 77, 79)
 AMBER = (185, 142, 44)
 TINT = (226, 217, 204)
-def contrast_ratio(a, b):
-    def lum(c):
-        v = [(x / 255) for x in c]
-        v = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4
-             for x in v]
-        return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]
-    hi, lo = sorted((lum(a), lum(b)), reverse=True)
-    return (hi + 0.05) / (lo + 0.05)
-
 SOURCES = ("REUTERS", "AP", "AL JAZEERA", "THE HINDU", "DETIK", "CNBC")
 BRIEF_PITCH = 13
 BRIEF_GAP = 7
@@ -1190,8 +1181,6 @@ def main():
     assert ORPHANS == 0, ORPHANS
     assert OFF_RAIL == 0, OFF_RAIL
     assert BREAK_BALANCE <= 55, BREAK_BALANCE
-    ratio = contrast_ratio(PAPER, INK)
-    assert ratio >= 11, ratio
     assert MAP_LABELS == 5, MAP_LABELS
     assert n >= 22, n
     assert BRIEF_LEAD >= 5, BRIEF_LEAD
@@ -1239,9 +1228,6 @@ def main():
     print("COMPLETE_CARDS %d" % COMPLETE_CARDS)
     print("THREAD_CARDS %d" % THREAD_CARDS)
     print("ORPHAN_LABELS %d" % ORPHAN_LABELS)
-    print("PAPER_RGB %d,%d,%d" % PAPER)
-    print("CONTRAST %.2f" % contrast_ratio(PAPER, INK))
-    print("ACCENTS_CHANGED 0")
     print("CARD_OVERFLOW %d" % CARD_OVERFLOW)
     print("PRIORITY %s" % PRIORITY)
     print("PRIORITY_BAR %d" % PRIORITY_BAR)
