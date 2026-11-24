@@ -29,6 +29,7 @@ RED = (186, 37, 37)
 TEAL = (15, 90, 87)
 DEEP = (105, 118, 130)
 RULE = (205, 197, 188)
+RAIL_INK = (208, 205, 201)
 GAIN = (22, 101, 52)
 MUTED_CLAIM = (130, 95, 90)
 RED_ON = (234, 96, 96)
@@ -90,6 +91,11 @@ ALSO_TOP, ALSO_BOT = 398, 434
 MAP_LABEL_GAP = 0
 MAP_LABELS = 0
 BREAKS = {"balanced": 0, "orphans": 0}
+RAILS = (28, 32)
+RAIL_XS = frozenset((28, 32, 38, 56, 252, 282, 472, 526, 640, 682, 770))
+OFF_RAIL = 0
+BREAK_BALANCE = 0
+RAIL_LINE = (156, 660)
 BRIEF_LEAD = 0
 RULE_CLEAR = 0
 
@@ -300,9 +306,12 @@ def frame(x, y, w, h):
 def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
          tracking=0):
     global TRACK_VARIANTS, FACES, CAP_TRACK, MAX_CAP_PX, CAP_FACES
-    global BODY_SIZES
+    global BODY_SIZES, OFF_RAIL
     if not s:
         return 0
+    if ((name.startswith(("lead-head-", "card-head-", "brief-place-"))
+         or name in ("markets-head", "wire-head")) and x not in RAIL_XS):
+        OFF_RAIL += 1
     if tracking not in (0, 1):
         audit_fail(name, tracking)
     if tracking and not (s.upper() == s and any(c.isalpha() for c in s)):
@@ -432,6 +441,7 @@ def wrap(key, s, maxw):
 
 def balanced_wrap(key, s, maxw):
     """Pick the space break whose two lines are closest in width."""
+    global BREAK_BALANCE
     words = s.split()
     if len(words) < 2:
         return [s]
@@ -441,14 +451,19 @@ def balanced_wrap(key, s, maxw):
         wa, wb = tw(key, first), tw(key, second)
         if wa > maxw or wb > maxw:
             continue
-        if len(second.split()) == 1 and wb < maxw * 0.4:
+        if len(second.split()) == 1:
             continue
         ratio = min(wa, wb) / max(wa, wb)
         if best is None or ratio > best[0]:
             best = (ratio, first, second)
+    BREAK_BALANCE = max(BREAK_BALANCE, round((1 - best[0]) * 100)) if best else BREAK_BALANCE
     if best is None:
         lines = wrap(key, s, maxw)
-        if len(lines[-1].split()) == 1 and tw(key, lines[-1]) < maxw * 0.4:
+        if len(lines) > 1:
+            wa, wb = tw(key, lines[0]), tw(key, lines[-1])
+            BREAK_BALANCE = max(
+                BREAK_BALANCE, round((1 - min(wa, wb) / max(wa, wb)) * 100))
+        if len(lines[-1].split()) == 1 and len(lines) > 1:
             BREAKS["orphans"] += 1
         return lines
     if best[0] >= 0.85:
@@ -1139,6 +1154,7 @@ def main():
         draw_card(buf, 28 + i * 244, card, i)
     fill_rect(buf, 24, 660, 682, 110, CARD)
     fill_rect(buf, 24, 660, 682, 8, TEAL)
+    line(buf, RAILS[0], RAIL_LINE[0], RAILS[0], RAIL_LINE[1], RAIL_INK)
     draw_briefs(buf)
     draw_map(buf)
     draw_pulse(buf, status)
@@ -1161,7 +1177,10 @@ def main():
     assert CAP_FACES == {"sans"}, CAP_FACES
     assert BODY_FACE == "serif", BODY_FACE
     assert sorted(BODY_SIZES) == [8, 10], sorted(BODY_SIZES)
+    ORPHANS += BREAKS["orphans"]
     assert ORPHANS == 0, ORPHANS
+    assert OFF_RAIL == 0, OFF_RAIL
+    assert BREAK_BALANCE <= 55, BREAK_BALANCE
     assert MAP_LABELS == 5, MAP_LABELS
     assert n >= 22, n
     assert BRIEF_LEAD >= 5, BRIEF_LEAD
@@ -1199,6 +1218,10 @@ def main():
     print("EDGE ok max_x=%d max_y=%d" % (EDGE_MAX_X, EDGE_MAX_Y))
     print("SCALE_LEAD %d SCALE_BODY %d" % (SCALE_LEAD, SCALE_BODY))
     print("ORPHANS %d" % ORPHANS)
+    print("RAILS %s" % list(RAILS))
+    print("OFF_RAIL %d" % OFF_RAIL)
+    print("BREAK_BALANCE %d" % BREAK_BALANCE)
+    print("RAIL_LINE %d-%d" % RAIL_LINE)
     print("BRIEF_LEAD %d" % BRIEF_LEAD)
     print("BRIEF_GAP %d" % BRIEF_GAP)
     print("RULE_CLEAR %d" % RULE_CLEAR)
