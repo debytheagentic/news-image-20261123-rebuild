@@ -45,9 +45,9 @@ DIPLO = (27, 77, 79)
 AMBER = (185, 142, 44)
 TINT = (226, 217, 204)
 SOURCES = ("REUTERS", "AP", "AL JAZEERA", "THE HINDU", "DETIK", "CNBC")
-BRIEF_PITCH = 13
+BRIEF_PITCH = 9
 BRIEF_GAP = 7
-BRIEF_ROW_PITCH = 41
+BRIEF_ROW_PITCH = 44
 TRACKING_OVERRIDES = 0
 
 BOXES = []
@@ -61,6 +61,8 @@ TICKER_LAST_Y = 0
 ALSO_TOP, ALSO_BOT = 398, 434
 MAP_LABEL_GAP = 0
 MAP_LABELS = 0
+MAP_PANEL = (536, 642, 460, 300)
+MX, MY, MW, MH = 542, 670, 448, 212
 BREAKS = {"balanced": 0, "orphans": 0}
 BRIEF_LEAD = 0
 RULE_CLEAR = 0
@@ -392,22 +394,25 @@ def ring(buf, cx, cy, r, c):
         line(buf, round(cx + r * math.cos(a0)), round(cy + r * math.sin(a0)),
              round(cx + r * math.cos(a1)), round(cy + r * math.sin(a1)), c)
 
+def map_point(place):
+    px, py = PLACES[place]
+    return round(MX + px * MW / 1000), round(MY + py * MH / 1000)
+
+
 def world(buf):
-    """Natural Earth coastlines on paper ocean, with land fill and keyline."""
-    fill_rect(buf, 712, 676, 278, 132, PAPER)
-    for gx in range(712, 990, 14):
-        line(buf, gx, 676, gx + 12, 688, HATCH)
-        line(buf, gx + 4, 676, gx + 16, 688, HATCH)
+    """Natural Earth coastline projected at full panel resolution."""
+    fill_rect(buf, MX, MY, MW, MH, PAPER)
     largest = sorted(range(len(COAST)), key=lambda i: len(COAST[i]),
                      reverse=True)[:3]
     for ring_index, coast in enumerate(COAST):
-        pts = [(712 + px * 276 / 1000, 676 + py * 132 / 1000)
+        pts = [(MX + px * MW / 1000, MY + py * MH / 1000)
                for px, py in coast]
         hits_by_row = {}
         for i in range(len(pts)):
             ax, ay = pts[i]
             bx, by = pts[(i + 1) % len(pts)]
-            lo, hi = int(max(676, min(ay, by))), int(min(808, max(ay, by)))
+            lo = max(MY, int(min(ay, by)))
+            hi = min(MY + MH - 1, int(max(ay, by)))
             for yy in range(lo, hi + 1):
                 if (ay <= yy < by) or (by <= yy < ay):
                     hits_by_row.setdefault(yy, []).append(
@@ -415,135 +420,185 @@ def world(buf):
         for yy, hits in hits_by_row.items():
             hits.sort()
             for k in range(0, len(hits) - 1, 2):
-                a = max(712, int(hits[k]))
-                b = min(990, int(hits[k + 1]))
+                a = max(MX, int(hits[k]))
+                b = min(MX + MW - 1, int(hits[k + 1]))
                 if b <= a:
                     continue
                 fill_rect(buf, a, yy, b - a + 1, 1, LAND_FILL)
-                if ring_index in largest and b - a > 4:
-                    fill_rect(buf, a + 2, yy, 1, 1, LAND_DARK)
-                    fill_rect(buf, b - 2, yy, 1, 1, LAND_DARK)
+                if ring_index in largest and b - a > 6:
+                    fill_rect(buf, a + 2, yy, 1, 1, COAST_INK)
+                    fill_rect(buf, b - 2, yy, 1, 1, COAST_INK)
     for coast in COAST:
-        pts = [(round(712 + px * 276 / 1000), round(676 + py * 132 / 1000))
+        pts = [(round(MX + px * MW / 1000), round(MY + py * MH / 1000))
                for px, py in coast]
         for i in range(len(pts)):
             ax, ay = pts[i]
             bx, by = pts[(i + 1) % len(pts)]
             line(buf, ax, ay, bx, by, COAST_INK)
-    for gy in (688, 736, 784):
-        for gx in range(714, 989, 6):
-            line(buf, gx, gy, min(gx + 2, 990), gy, GRAT)
-    for gx in (754, 850, 946):
-        for gy in range(678, 807, 6):
-            line(buf, gx, gy, gx, min(gy + 2, 808), GRAT)
+    for lat, label in ((60, "60N"), (0, "0"), (-30, "30S")):
+        gy = round(MY + (90 - lat) * MH / 180)
+        line(buf, MX, gy, MX + MW - 1, gy, AXIS)
+        text(buf, label, MX + 2, gy - 7, "sans_6", INK,
+             "grat-lat-%s" % label, xlim=MX + 22, ylim=gy)
+    gx = round(MX + 180 * MW / 360)
+    line(buf, gx, MY, gx, MY + MH - 1, AXIS)
+    text(buf, "0", gx + 2, MY + 2, "sans_6", INK, "grat-lon-0",
+         xlim=gx + 12, ylim=MY + 10)
 
 
 PINS = (("banten", "1", CRISIS), ("antalya", "2", DIPLO),
         ("hormuz", "3", CRISIS), ("kyiv", "4", CRISIS),
         ("khartoum", "5", CRISIS), ("lahore", "6", DEEP),
         ("seoul", "7", DEEP), ("saudi", "8", AMBER))
-PIN_OFFSETS = {"banten": (8, -14), "antalya": (-10, -18),
-               "hormuz": (8, -14), "kyiv": (8, -14),
-               "khartoum": (18, -8), "lahore": (18, -16),
-               "seoul": (8, -14), "saudi": (-10, -8)}
-PLATES = ((873, 760), (790, 686), (832, 724), (832, 706), (810, 742))
 
 
-def plate_width(place):
-    return tw("sans_8", place.upper()) + 6
+def plate_width(label):
+    return tw("sans_8", label) + 8
 
 
 def draw_map(buf):
     global MAP_LABEL_GAP, MAP_LABELS
-    x, y, w, h = 706, 642, 290, 172
+    x, y, w, h = MAP_PANEL
     fill_rect(buf, x, y, w, h, PAPER)
     border(buf, x, y, w, h, RULE)
     border(buf, x + 6, y + 6, w - 12, h - 12, RULE, reg=False)
-    fill_rect(buf, x + 6, y + h - 10, w - 12, 4, TEAL)
-    text(buf, "WHERE", x + 10, y + 6, "serif_15", MID,
+    fill_rect(buf, x + 6, y + h - 8, w - 12, 4, TEAL)
+    text(buf, "WHERE", x + 10, y + 4, "serif_15", MID,
          "map-head", xlim=x + 84, ylim=y + 22)
-    text(buf, "SCALE 1:110M", x + w - 92, y + 8, "sans_8", TEXT,
-         "map-scale", xlim=x + w - 6, ylim=y + 20)
-    fill_rect(buf, x + 6, y + 22, w - 12, 1, RULE)
+    text(buf, "SCALE 1:110M", x + w - 92, y + 6, "sans_8", TEXT,
+         "map-scale", xlim=x + w - 6, ylim=y + 18)
+    fill_rect(buf, x + 6, y + 25, w - 12, 1, RULE)
     world(buf)
-    for label, lx, ly in (("60N", 714, 680), ("0", 714, 728),
-                          ("30S", 714, 776)):
-        text(buf, label, lx, ly, "sans_8", TEXT, "map-lat-%s" % label,
-             xlim=lx + 30, ylim=ly + 9)
-    for label, lx in (("120W", 746), ("0", 842), ("90E", 938)):
-        text(buf, label, lx, 668, "sans_8", TEXT, "map-lon-%s" % label,
-             xlim=lx + 30, ylim=677)
-    line(buf, 982, 672, 982, 680, INK)
-    line(buf, 979, 676, 982, 672, INK)
-    line(buf, 985, 676, 982, 672, INK)
-    text(buf, "N", 977, 682, "sans_8", TEXT, "map-north",
-         xlim=990, ylim=692)
+    line(buf, 982, 679, 982, 687, INK)
+    line(buf, 979, 683, 982, 679, INK)
+    line(buf, 985, 683, 982, 679, INK)
+    text(buf, "N", 977, 690, "sans_8", TEXT, "map-north",
+         xlim=990, ylim=700)
+
     visible = 5
-    for i, (place, num, col) in enumerate(PINS):
-        px, py = PLACES[place]
-        ex = round(712 + px * 276 / 1000)
-        ey = round(676 + py * 132 / 1000)
-        dx, dy = PIN_OFFSETS[place]
-        hx, hy = ex + dx, ey + dy
-        if i < visible:
-            plate_x, plate_y = PLATES[i]
-            plate_w = plate_width(place)
-            side_ok = (plate_x + plate_w < hx) if hx > 850 else (plate_x > hx)
-            if not side_ok:
-                print("MAP_LABEL %s wrong side" % place)
-                sys.exit(1)
-            elbow_x = plate_x + plate_w
-            line(buf, hx, hy, elbow_x, hy, INK)
-            line(buf, elbow_x, hy, elbow_x, plate_y + 5, INK)
-            line(buf, plate_x + plate_w // 2, plate_y + 5,
-                 elbow_x, plate_y + 5, INK)
-        disc(buf, ex, ey, 2, INK)
-        disc(buf, hx, hy, 6, PAPER)
-        disc(buf, hx, hy, 4, col)
-        text(buf, num, hx - 2, hy - 3, "sans_8", PAPER, "pin-%d" % i,
-             xlim=hx + 6, ylim=hy + 7)
+    center = MX + MW // 2
+    chosen = []
     boxes = []
-    for i in range(visible):
-        place = PINS[i][0]
-        plate_x, plate_y = PLATES[i]
-        plate_w = plate_width(place)
-        boxes.append((place.upper(), plate_x, plate_y,
-                      plate_x + plate_w, plate_y + 10))
+    leaders = []
+    for i, (place, num, col) in enumerate(PINS[:visible]):
+        ex, ey = map_point(place)
+        label = num + " " + place.upper()
+        pw = plate_width(label)
+        first = ex - 10 - pw if ex > center else ex + 10
+        second = ex + 10 if ex > center else ex - 10 - pw
+        options = []
+        for px in (first, second):
+            elbow = px - 3 if px > ex else px + pw + 3
+            for py in (ey - 16, ey + 4, ey - 32, ey + 22, ey - 48):
+                if (px < MX + 4 or px + pw > MX + MW - 4 or
+                        py < MY + 4 or py + 10 > MY + MH - 4):
+                    continue
+                gap = min(
+                    [max(0, px - b[3], b[1] - px - pw, py - b[4], b[2] - py - 10)
+                     for b in boxes] or [1024])
+                if gap < 8:
+                    continue
+                lx0, lx1 = sorted((ex, elbow))
+                ly0, ly1 = sorted((ey, py + 5))
+                if any(lx0 < b[3] + 2 and lx1 > b[1] - 2 and
+                       ly0 < b[4] + 2 and ly1 > b[2] - 2 for b in boxes):
+                    continue
+                options.append((abs(ex - elbow) + abs(ey - py - 5), px, py))
+        if not options:
+            print("MAP_LABEL %s has no clear plate" % place)
+            sys.exit(1)
+        _, px, py = min(options)
+        chosen.append((label, px, py, pw, ex, ey))
+        boxes.append((label, px, py, px + pw, py + 10))
+
+    for label, px, py, pw, ex, ey in chosen:
+        elbow = px - 3 if px > ex else px + pw + 3
+        line(buf, ex, ey, elbow, ey, INK)
+        line(buf, elbow, ey, elbow, py + 5, INK)
+        line(buf, elbow, py + 5, px if px > ex else px + pw, py + 5, INK)
+        leaders.append((min(ex, elbow), min(ey, py + 5),
+                        max(ex, elbow), max(ey, py + 5)))
+    for i, (place, num, col) in enumerate(PINS):
+        ex, ey = map_point(place)
+        disc(buf, ex, ey, 2, INK)
+        disc(buf, ex, ey, 6, PAPER)
+        disc(buf, ex, ey, 5, INK)
+        disc(buf, ex, ey, 4, col)
+        if i < visible:
+            continue
+        nw = tw("sans_8", num) + 6
+        candidates = ((ex + 8, ey - 8), (ex - 8 - nw, ey - 8),
+                      (ex + 8, ey - 16), (ex - 8 - nw, ey - 16),
+                      (ex + 8, ey + 5), (ex - 8 - nw, ey + 5),
+                      (ex + 8, ey + 13), (ex - 8 - nw, ey + 13))
+        placed = False
+        for threshold in (4, 2):
+            for cx, cy in candidates:
+                if (cx < MX + 2 or cx + nw > MX + MW - 2 or
+                        cy < MY + 2 or cy + 10 > MY + MH - 2):
+                    continue
+                gap = min(
+                    [max(0, cx - b[3], b[1] - cx - nw, cy - b[4], b[2] - cy - 10)
+                     for b in boxes] or [1024])
+                if gap < threshold:
+                    continue
+                if any(cx < lx1 + 2 and cx + nw > lx0 - 2 and
+                       cy < ly1 + 2 and cy + 10 > ly0 - 2
+                       for lx0, ly0, lx1, ly1 in leaders):
+                    continue
+                line(buf, ex, ey, cx if cx > ex else cx + nw, cy + 5, INK)
+                fill_rect(buf, cx, cy, nw, 10, PAPER)
+                text(buf, num, cx + 3, cy + 1, "sans_8", INK,
+                     "pin-chip-%d" % i, xlim=cx + nw - 3, ylim=cy + 10)
+                boxes.append((num, cx, cy, cx + nw, cy + 10))
+                placed = True
+                break
+            if placed:
+                break
+
     gap = 1024
     pair = ("", "")
-    for i in range(len(boxes)):
-        for j in range(i + 1, len(boxes)):
+    for i in range(len(chosen)):
+        for j in range(i + 1, len(chosen)):
             a, b = boxes[i], boxes[j]
-            dx = max(0, a[1] - b[3], b[1] - a[3])
-            dy = max(0, a[2] - b[4], b[2] - a[4])
-            if max(dx, dy) < gap:
-                gap = max(dx, dy)
-                pair = (a[0], b[0])
+            d = max(0, a[1] - b[3], b[1] - a[3], a[2] - b[4], b[2] - a[4])
+            if d < gap:
+                gap, pair = d, (a[0], b[0])
     if gap < 8:
         print("MAP_LABEL %s vs %s too close by %dpx"
               % (pair[0], pair[1], 8 - gap))
         sys.exit(1)
     MAP_LABEL_GAP, MAP_LABELS = gap, visible
-    for i in range(visible):
-        place = PINS[i][0]
-        plate_x, plate_y = PLATES[i]
-        plate_w = plate_width(place)
-        fill_rect(buf, plate_x, plate_y, plate_w, 10, PAPER)
-        border(buf, plate_x, plate_y, plate_w, 10, INK, reg=False)
-        text(buf, place.upper(), plate_x + 3, plate_y + 1, "sans_8", INK,
-             "plate-%d" % i, xlim=plate_x + plate_w - 3, ylim=plate_y + 10)
-    fill_rect(buf, 712, 786, 272, 16, PAPER)
-    text(buf, " · ".join(PINS[i][1] + " " + PINS[i][0].upper()
-                         for i in range(visible, len(PINS))),
-         714, 790, "sans_8", INK, "map-list", xlim=984, ylim=800)
+    for label, px, py, pw, ex, ey in chosen:
+        fill_rect(buf, px, py, pw, 10, PAPER)
+        border(buf, px, py, pw, 10, INK, reg=False)
+        text(buf, label, px + 4, py + 1, "sans_8", INK,
+             "plate-%s" % label, xlim=px + pw - 4, ylim=py + 10)
+
+    fill_rect(buf, MX, MY + MH + 2, MW, 1, RULE)
+    for i, (place, num, col) in enumerate(PINS):
+        legend_col = 0 if i < 5 else 1
+        legend_row = i if i < 5 else i - 4
+        cx = MX + 4 + legend_col * 130
+        cy = MY + MH + 5 + legend_row * 9
+        label = num + " " + place.upper()
+        text(buf, label, cx, cy, "sans_8", INK, "legend-pin-%d" % i,
+             xlim=cx + 110, ylim=cy + 10)
+    for j, item in enumerate(BRIEFS[9:15]):
+        place = item["place"].split("/")[-1].strip()
+        label = "%s %s %s %s" % (item["num"], place, item["head"],
+                                 item["source"])
+        cy = MY + MH + 3 + j * 8
+        text(buf, label, MX + 238, cy, "sans_6", TEXT,
+             "legend-brief-%d" % (9 + j), xlim=MX + MW - 2, ylim=cy + 8)
 
 
 def market_path(buf):
-    """Shaded five-day market path, shifted below the map for clear spacing."""
-    pts = [(708, 839), (730, 843), (757, 852), (782, 847),
-           (807, 859), (832, 865), (862, 861), (892, 871)]
-    base = 872
-    for x in range(708, 893):
+    """Five-day path, relocated below the compact brief grid."""
+    pts = [(28, 825), (50, 829), (77, 838), (102, 833),
+           (127, 845), (152, 851), (182, 847), (212, 850)]
+    base = 858
+    for x in range(28, 213):
         for i in range(len(pts) - 1):
             if pts[i][0] <= x <= pts[i + 1][0]:
                 x0, y0 = pts[i]
@@ -552,31 +607,31 @@ def market_path(buf):
                 if x % 2 == 0:
                     line(buf, x, y, x, base, TINT)
                 break
-    line(buf, 706, base, 896, base, AXIS)
-    for tick_x in (708, 892):
+    line(buf, 26, base, 216, base, AXIS)
+    for tick_x in (28, 212):
         line(buf, tick_x, base - 3, tick_x, base + 3, AXIS)
     for i in range(len(pts) - 1):
         x0, y0 = pts[i]
         x1, y1 = pts[i + 1]
         line(buf, x0, y0, x1, y1, CRISIS)
         line(buf, x0, y0 + 1, x1, y1 + 1, CRISIS)
-    ring(buf, 892, 871, 5, CRISIS)
-    disc(buf, 892, 871, 2, CRISIS)
-    for x, label in ((708, "D1"), (794, "D3"), (876, "D5")):
-        text(buf, label, x, 875, "sans_8", TEXT, "path-tick-%s" % label,
-             xlim=x + 18, ylim=886)
-    text(buf, "5-DAY MOVE", 708, 826, "sans_8", MID, "path-title",
-         xlim=800, ylim=837)
-    text(buf, "-3.70%", 828, 826, "sans_8", CRISIS, "path-extreme",
-         xlim=896, ylim=836)
-    line(buf, 860, 836, 890, 867, CRISIS)
+    ring(buf, 212, 850, 5, CRISIS)
+    disc(buf, 212, 850, 2, CRISIS)
+    for x, label in ((28, "D1"), (114, "D3"), (196, "D5")):
+        text(buf, label, x, 866, "sans_8", TEXT, "path-tick-%s" % label,
+             xlim=x + 18, ylim=877)
+    text(buf, "5-DAY MOVE", 28, 816, "sans_8", MID, "path-title",
+         xlim=120, ylim=827)
+    text(buf, "-3.70%", 148, 816, "sans_8", CRISIS, "path-extreme",
+         xlim=216, ylim=826)
+    line(buf, 180, 826, 210, 846, CRISIS)
 
 
 def ruled_bars(buf, status):
     """Three ruled status bars using grounded story counts."""
-    x, y = 904, 842
-    text(buf, "STATUS", x, 826, "serif_15", MID, "bar-title",
-         xlim=x + 80, ylim=843)
+    x, y = 320, 832
+    text(buf, "STATUS", x, 812, "serif_15", MID, "bar-title",
+         xlim=x + 80, ylim=829)
     line(buf, x, y, x, y + 55, INK)
     keys = ("REPORTED", "CLAIM", "ONGOING")
     cols = (CRISIS, INK, TEAL)
@@ -591,8 +646,8 @@ def ruled_bars(buf, status):
              "bar-val-%d" % i, xlim=x + 80, ylim=by + 12)
     ring(buf, x + 48, y + 8, 6, CRISIS)
     for n in range(0, top + 1, 2):
-        text(buf, str(n), x + 2 + n * 13, 886, "sans_8", TEXT,
-             "bar-axis-%d" % n, xlim=x + 80, ylim=896)
+        text(buf, str(n), x + 2 + n * 13, 872, "sans_8", TEXT,
+             "bar-axis-%d" % n, xlim=x + 80, ylim=882)
 
 
 
@@ -851,27 +906,35 @@ def draw_card(buf, x, card, i):
 def draw_briefs(buf):
     global BRIEF_LEAD
     spans = [[], [], []]
-    for i, item in enumerate(BRIEFS[:15]):
+    for i, item in enumerate(BRIEFS[:9]):
         row, col = divmod(i, 3)
-        x = 32 + col * 220
+        x = 32 + col * 160
         y = 688 + row * BRIEF_ROW_PITCH
-        xlim = x + (220 if col == 2 else 208)
-        text(buf, item["place"], x, y, "sans_10", INK,
-             "brief-place-%d" % i, xlim=xlim, ylim=y + 13)
-        text(buf, item["head"], x, y + BRIEF_PITCH, "sans_10", INK,
-             "brief-head-%d" % i, xlim=xlim, ylim=y + 26)
-        end = value_text(buf, item["num"], x, y + 2 * BRIEF_PITCH,
-                         "sans_10", TEXT, "brief-val-%d" % i,
-                         xlim, y + 39)
-        detail = " · " + " · ".join((item["context"], item["source"]))
-        text(buf, detail, end + 3, y + 2 * BRIEF_PITCH, "sans_10", TEXT,
-             "brief-detail-%d" % i, xlim=xlim, ylim=y + 39)
-        parts = ((item["place"], 0), (item["head"], BRIEF_PITCH),
-                 (item["num"], 2 * BRIEF_PITCH), (detail, 2 * BRIEF_PITCH))
+        xlim = x + 156
+        detail = "%s · %s · %s" % (item["num"], item["context"],
+                                    item["source"])
+        words = detail.split()
+        detail_lines = []
+        current = ""
+        for word in words:
+            trial = (current + " " + word).strip()
+            if current and tw("sans_8", trial) > xlim - x:
+                detail_lines.append(current)
+                current = word
+            else:
+                current = trial
+        detail_lines.append(current)
+        assert len(detail_lines) <= 2, detail_lines
+        lines = [(item["place"], "sans_8", INK),
+                 (item["head"], "sans_8", MID)]
+        lines += [(s, "sans_8", TEXT) for s in detail_lines]
         top, bot = 1024, 0
-        for s, dy in parts:
-            t, b = ink_rows("sans_10", s)
-            top, bot = min(top, y + dy + t), max(bot, y + dy + b + 1)
+        for ln, (s, key, fg) in enumerate(lines):
+            ly = y + ln * BRIEF_PITCH
+            text(buf, s, x, ly, key, fg, "brief-%d-%d" % (i, ln),
+                 xlim=xlim, ylim=ly + BRIEF_PITCH + 1)
+            t, b = ink_rows(key, s)
+            top, bot = min(top, ly + t), max(bot, ly + b + 1)
         spans[col].append((top, bot))
     BRIEF_LEAD = min(nxt[0] - prev[1]
                      for column in spans
@@ -883,23 +946,23 @@ def draw_briefs(buf):
 
 def draw_markets(buf):
     """Compact grounded index strip above the ticker."""
-    fill_rect(buf, 28, 890, 664, 44, CARD)
-    fill_rect(buf, 28, 890, 664, 1, INK)
-    fill_rect(buf, 28, 948, 664, 6, TEAL)
+    fill_rect(buf, 28, 890, 492, 44, CARD)
+    fill_rect(buf, 28, 890, 492, 1, INK)
+    fill_rect(buf, 28, 948, 492, 6, TEAL)
     text(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 890, "serif_15", MID,
-         "markets-head", xlim=692, ylim=906)
+         "markets-head", xlim=520, ylim=906)
     for i, (label, value, pct, up) in enumerate(TICKER):
         col, row = divmod(i, 3)
-        x, y = 28 + col * 332, 906 + row * 12
+        x, y = 28 + col * 164, 906 + row * 12
         c = GAIN if up else CRISIS
-        text(buf, label, x, y, "sans_10", INK, "mkt-lab-%d" % i,
-             xlim=x + 58, ylim=y + 12)
-        value_text(buf, value, x + 58, y, "sans_10", INK,
-                   "mkt-val-%d" % i, xlim=x + 130, ylim=y + 12)
-        pw = tw("sans_10", pct)
-        arrow(buf, x + 184 - pw, y + 1, up, c)
-        value_text(buf, pct, x + 190 - pw, y, "sans_10", c,
-                   "mkt-pct-%d" % i, xlim=x + 194, ylim=y + 12)
+        text(buf, label, x, y, "sans_8", INK, "mkt-lab-%d" % i,
+             xlim=x + 44, ylim=y + 10)
+        value_text(buf, value, x + 48, y, "sans_8", INK,
+                   "mkt-val-%d" % i, xlim=x + 112, ylim=y + 10)
+        pw = tw("sans_8", pct)
+        arrow(buf, x + 140 - pw, y + 1, up, c)
+        value_text(buf, pct, x + 146 - pw, y, "sans_8", c,
+                   "mkt-pct-%d" % i, xlim=x + 164, ylim=y + 10)
 
 
 
@@ -963,16 +1026,16 @@ def main():
         status[item["status"]] = status.get(item["status"], 0) + 1
 
     draw_masthead(buf, n)
-    fill_rect(buf, 28, 162, 968, 230, PAPER)
-    border(buf, 28, 162, 968, 230, RULE)
+    fill_rect(buf, 24, 660, 682, 110, CARD)
+    fill_rect(buf, 24, 660, 682, 8, TEAL)
     draw_lead(buf, (32, 628), LEADS[0], 0)
     draw_lead(buf, (640, 996), LEADS[1], 1)
     draw_wire(buf)
     fill_rect(buf, 24, 438, 976, 220, CARD)
     for i, card in enumerate(CARDS):
         draw_card(buf, 28 + i * 244, card, i)
-    fill_rect(buf, 24, 660, 682, 110, CARD)
-    fill_rect(buf, 24, 660, 682, 8, TEAL)
+    fill_rect(buf, 24, 660, 496, 230, CARD)
+    fill_rect(buf, 24, 660, 496, 8, TEAL)
     draw_briefs(buf)
     draw_map(buf)
     draw_pulse(buf, status)
