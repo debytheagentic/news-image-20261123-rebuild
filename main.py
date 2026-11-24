@@ -7,6 +7,7 @@ repo. Every string is measured; the audit refuses overlapping or overflowing
 text.
 """
 import base64
+import math
 import os
 import struct
 import sys
@@ -22,23 +23,21 @@ PAPER = (248, 240, 232)
 CARD = (223, 213, 201)
 CREAM = (245, 240, 231)
 INK = (15, 23, 42)
+MID = (48, 62, 80)
 TEXT = (60, 70, 85)
 RED = (186, 37, 37)
 TEAL = (15, 90, 87)
-LAND = (208, 198, 184)
-SEA = (223, 213, 201)
-SAND = (166, 151, 132)
 DEEP = (105, 118, 130)
 RULE = (205, 197, 188)
 GAIN = (22, 101, 52)
 RED_ON = (234, 96, 96)
 GAIN_ON = (104, 208, 136)
 STATUS_COL = {"REPORTED": TEAL, "CLAIM": RED, "ONGOING": INK}
-LAND_FILL = (233, 225, 214)
-LAND_DARK = (202, 192, 180)
+LAND_FILL = (207, 199, 186)
+LAND_DARK = (188, 178, 165)
 COAST_INK = (85, 91, 97)
 GRAT = (200, 196, 186)
-HATCH = (196, 188, 176)
+HATCH = (216, 207, 196)
 AXIS = (168, 162, 150)
 AXIS_STRONG = (137, 130, 119)
 CRISIS = (179, 27, 27)
@@ -58,6 +57,7 @@ TRACKING_OVERRIDES = 0
 BOXES = []
 RULES = []
 MONO_USES = set()
+WEIGHTS = {"primary": 0, "secondary": 0, "tertiary": 0}
 
 LEADS = [
     {"place": "CIKANDE, BANTEN", "kicker": "DISASTER",
@@ -249,6 +249,12 @@ def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0):
     box = (x, y + top, x + w, y + bot + 1)
     if key.startswith("mono_"):
         MONO_USES.add("ticker" if name.startswith("tick-") else name)
+    elif key.startswith("serifbold_"):
+        WEIGHTS["primary"] += 1
+    elif key.startswith("serif_"):
+        WEIGHTS["secondary"] += 1
+    elif key.startswith("sans_"):
+        WEIGHTS["tertiary"] += 1
     for other, ob in BOXES:
         if box[0] < ob[2] and box[2] > ob[0] and box[1] < ob[3] and box[3] > ob[1]:
             print("OVERLAP %s vs %s" % (name, other))
@@ -304,23 +310,30 @@ def disc(buf, cx, cy, r, c):
                 buf[j], buf[j + 1], buf[j + 2] = c
 
 
+
+def ring(buf, cx, cy, r, c):
+    for i in range(24):
+        a0 = 2 * math.pi * i / 24
+        a1 = 2 * math.pi * (i + 1) / 24
+        line(buf, round(cx + r * math.cos(a0)), round(cy + r * math.sin(a0)),
+             round(cx + r * math.cos(a1)), round(cy + r * math.sin(a1)), c)
+
 def world(buf):
-    """Natural Earth coastline: hatched sea, two-tone land, weighted keyline."""
-    fill_rect(buf, 706, 665, 289, 141, SEA)
-    for gy in range(668, 804, 12):
-        for gx in range(708, 993, 12):
-            for k in range(3):
-                line(buf, gx + k * 2, gy + 3, gx + k * 2 + 2, gy + 1, HATCH)
+    """Natural Earth coastlines on paper ocean, with land fill and keyline."""
+    fill_rect(buf, 712, 676, 278, 132, PAPER)
+    for gx in range(712, 990, 14):
+        line(buf, gx, 676, gx + 12, 688, HATCH)
+        line(buf, gx + 4, 676, gx + 16, 688, HATCH)
     largest = sorted(range(len(COAST)), key=lambda i: len(COAST[i]),
                      reverse=True)[:3]
-    for ring_index, ring in enumerate(COAST):
-        pts = [(706 + px * 288 / 1000, 665 + py * 140 / 1000)
-               for px, py in ring]
+    for ring_index, coast in enumerate(COAST):
+        pts = [(712 + px * 276 / 1000, 676 + py * 132 / 1000)
+               for px, py in coast]
         hits_by_row = {}
         for i in range(len(pts)):
             ax, ay = pts[i]
             bx, by = pts[(i + 1) % len(pts)]
-            lo, hi = int(max(665, min(ay, by))), int(min(805, max(ay, by)))
+            lo, hi = int(max(676, min(ay, by))), int(min(808, max(ay, by)))
             for yy in range(lo, hi + 1):
                 if (ay <= yy < by) or (by <= yy < ay):
                     hits_by_row.setdefault(yy, []).append(
@@ -328,34 +341,28 @@ def world(buf):
         for yy, hits in hits_by_row.items():
             hits.sort()
             for k in range(0, len(hits) - 1, 2):
-                a = max(706, int(hits[k]))
-                b = min(994, int(hits[k + 1]))
+                a = max(712, int(hits[k]))
+                b = min(990, int(hits[k + 1]))
                 if b <= a:
                     continue
                 fill_rect(buf, a, yy, b - a + 1, 1, LAND_FILL)
                 if ring_index in largest and b - a > 4:
-                    fill_rect(buf, a + 1, yy, 1, 1, LAND_DARK)
-                    fill_rect(buf, b - 1, yy, 1, 1, LAND_DARK)
-    for ring_index, ring in enumerate(COAST):
-        pts = [(round(706 + px * 288 / 1000), round(665 + py * 140 / 1000))
-               for px, py in ring]
-        major = ring_index in largest
+                    fill_rect(buf, a + 2, yy, 1, 1, LAND_DARK)
+                    fill_rect(buf, b - 2, yy, 1, 1, LAND_DARK)
+    for coast in COAST:
+        pts = [(round(712 + px * 276 / 1000), round(676 + py * 132 / 1000))
+               for px, py in coast]
         for i in range(len(pts)):
             ax, ay = pts[i]
             bx, by = pts[(i + 1) % len(pts)]
             line(buf, ax, ay, bx, by, COAST_INK)
-            if major:
-                line(buf, ax, ay + 1, bx, by + 1, COAST_INK)
-    for gy in (688, 712, 735, 758, 782):
-        for gx in range(707, 995, 6):
-            line(buf, gx, gy, min(gx + 2, 995), gy, GRAT)
-    for gx in (754, 802, 850, 898, 946):
-        for gy in range(665, 805, 6):
-            line(buf, gx, gy, gx, min(gy + 2, 805), GRAT)
-    for gx in range(706, 995, 6):
-        line(buf, gx, 735, min(gx + 3, 995), 735, AXIS_STRONG)
-    for gy in range(665, 806, 6):
-        line(buf, 850, gy, 850, min(gy + 3, 806), AXIS_STRONG)
+    for gy in (688, 736, 784):
+        for gx in range(714, 989, 6):
+            line(buf, gx, gy, min(gx + 2, 990), gy, GRAT)
+    for gx in (754, 850, 946):
+        for gy in range(678, 807, 6):
+            line(buf, gx, gy, gx, min(gy + 2, 808), GRAT)
+
 
 PINS = (("banten", "1", CRISIS), ("antalya", "2", DIPLO),
         ("hormuz", "3", CRISIS), ("kyiv", "4", CRISIS),
@@ -365,45 +372,55 @@ PIN_OFFSETS = {"banten": (8, -14), "antalya": (-10, -18),
                "hormuz": (8, -14), "kyiv": (8, -14),
                "khartoum": (18, -8), "lahore": (18, -16),
                "seoul": (8, -14), "saudi": (-10, -8)}
+PLATES = ((714, 752), (778, 752), (842, 752), (906, 752),
+          (756, 766), (830, 766), (886, 766), (934, 766))
 
 
 def draw_map(buf):
     x, y, w, h = 706, 642, 290, 172
     fill_rect(buf, x, y, w, h, PAPER)
-    border(buf, x + 4, y + 4, w - 8, h - 8, INK, reg=False)
-    text(buf, "WHERE IT HAPPENED", x + 8, y + 6, "sans_10", INK,
-         "map-head", xlim=850, ylim=y + 22)
-    text(buf, "SCALE 1:110M", x + w - 116, y + 6, "sans_10", TEXT,
-         "map-scale", xlim=x + w - 8, ylim=y + 22)
-    fill_rect(buf, x + 4, 664, w - 8, 1, RULE)
+    border(buf, x, y, w, h, RULE)
+    border(buf, x + 6, y + 6, w - 12, h - 12, RULE, reg=False)
+    text(buf, "WHERE", x + 10, y + 6, "serif_15", MID,
+         "map-head", xlim=x + 84, ylim=y + 22)
+    text(buf, "SCALE 1:110M", x + w - 92, y + 8, "sans_8", TEXT,
+         "map-scale", xlim=x + w - 6, ylim=y + 20)
+    fill_rect(buf, x + 6, y + 22, w - 12, 1, RULE)
     world(buf)
-    for i, (place, num, col) in enumerate(PINS):
-        px, py = PLACES[place]
-        ex = round(706 + px * 288 / 1000)
-        ey = round(665 + py * 140 / 1000)
-        dx, dy = PIN_OFFSETS[place]
-        hx, hy = ex + dx, ey + dy
-        line(buf, ex, ey, hx, hy, INK)
-        disc(buf, ex, ey, 2, INK)
-        disc(buf, hx, hy, 6, CREAM)
-        disc(buf, hx, hy, 5, col)
-        text(buf, num, hx - 3, hy - 4, "sans_10", CREAM, "pin-%d" % i,
-             xlim=hx + 7, ylim=hy + 9)
+    for label, lx, ly in (("60N", 714, 680), ("0", 714, 728),
+                          ("30S", 714, 776)):
+        text(buf, label, lx, ly, "sans_8", TEXT, "map-lat-%s" % label,
+             xlim=lx + 30, ylim=ly + 9)
+    for label, lx in (("120W", 746), ("0", 842), ("90E", 938)):
+        text(buf, label, lx, 668, "sans_8", TEXT, "map-lon-%s" % label,
+             xlim=lx + 30, ylim=677)
     line(buf, 982, 672, 982, 680, INK)
     line(buf, 979, 676, 982, 672, INK)
     line(buf, 985, 676, 982, 672, INK)
-    text(buf, "N", 977, 682, "sans_10", INK, "map-north",
-         xlim=990, ylim=696)
-    lx, ly = 710, 780
-    fill_rect(buf, lx, ly, 190, 30, PAPER)
-    border(buf, lx, ly, 190, 30, INK, reg=False)
-    for i, (col, label) in enumerate(((CRISIS, "CRISIS"),
-                                      (DIPLO, "TALKS"),
-                                      (AMBER, "CLAIM"))):
-        cx = lx + 4 + i * 62
-        fill_rect(buf, cx, ly + 10, 5, 5, col)
-        text(buf, label, cx + 8, ly + 6, "sans_10", TEXT,
-             "map-legend-%d" % i, xlim=cx + 58, ylim=ly + 22)
+    text(buf, "N", 977, 682, "sans_8", TEXT, "map-north",
+         xlim=990, ylim=692)
+    for i, (place, num, col) in enumerate(PINS):
+        px, py = PLACES[place]
+        ex = round(712 + px * 276 / 1000)
+        ey = round(676 + py * 132 / 1000)
+        dx, dy = PIN_OFFSETS[place]
+        hx, hy = ex + dx, ey + dy
+        plate_x, plate_y = PLATES[i]
+        plate_w = tw("sans_8", place.upper()) + 10
+        line(buf, ex, ey, hx, hy, INK)
+        line(buf, hx, hy, plate_x + plate_w // 2, plate_y, INK)
+        disc(buf, ex, ey, 2, INK)
+        disc(buf, hx, hy, 6, PAPER)
+        disc(buf, hx, hy, 4, col)
+        text(buf, num, hx - 2, hy - 3, "sans_8", PAPER, "pin-%d" % i,
+             xlim=hx + 6, ylim=hy + 7)
+    for i, (place, num, col) in enumerate(PINS):
+        plate_x, plate_y = PLATES[i]
+        plate_w = tw("sans_8", place.upper()) + 10
+        fill_rect(buf, plate_x, plate_y, plate_w, 10, PAPER)
+        border(buf, plate_x, plate_y, plate_w, 10, INK, reg=False)
+        text(buf, place.upper(), plate_x + 5, plate_y + 1, "sans_8", INK,
+             "plate-%d" % i, xlim=plate_x + plate_w - 4, ylim=plate_y + 10)
 
 
 def market_path(buf):
@@ -428,11 +445,13 @@ def market_path(buf):
         x1, y1 = pts[i + 1]
         line(buf, x0, y0, x1, y1, CRISIS)
         line(buf, x0, y0 + 1, x1, y1 + 1, CRISIS)
-    disc(buf, 892, 857, 4, CREAM)
+    ring(buf, 892, 857, 5, CRISIS)
     disc(buf, 892, 857, 2, CRISIS)
     for x, label in ((708, "D1"), (794, "D3"), (876, "D5")):
         text(buf, label, x, 861, "sans_8", TEXT, "path-tick-%s" % label,
              xlim=x + 18, ylim=872)
+    text(buf, "5-DAY MOVE", 708, 812, "sans_8", MID, "path-title",
+         xlim=800, ylim=823)
     text(buf, "-3.70%", 828, 812, "sans_8", CRISIS, "path-extreme",
          xlim=896, ylim=822)
     line(buf, 860, 822, 890, 853, CRISIS)
@@ -440,7 +459,9 @@ def market_path(buf):
 
 def ruled_bars(buf, status):
     """Three ruled status bars using grounded story counts."""
-    x, y = 904, 818
+    x, y = 904, 828
+    text(buf, "STATUS", x, 812, "serif_15", MID, "bar-title",
+         xlim=x + 80, ylim=829)
     line(buf, x, y, x, y + 55, INK)
     keys = ("REPORTED", "CLAIM", "ONGOING")
     cols = (CRISIS, INK, TEAL)
@@ -453,11 +474,12 @@ def ruled_bars(buf, status):
         fill_rect(buf, x + 2 + width, by, 1, 9, CREAM)
         text(buf, str(count), x + 62, by - 2, "sans_10", cols[i],
              "bar-val-%d" % i, xlim=x + 80, ylim=by + 12)
-    text(buf, "MAX %d" % top, x + 8, 808, "sans_8", CRISIS, "bar-extreme",
-         xlim=x + 48, ylim=818)
+    ring(buf, x + 48, y + 8, 6, CRISIS)
+
+
     for n in range(0, top + 1, 2):
-        text(buf, str(n), x + 2 + n * 13, 868, "sans_8", TEXT,
-             "bar-axis-%d" % n, xlim=x + 80, ylim=878)
+        text(buf, str(n), x + 2 + n * 13, 872, "sans_8", TEXT,
+             "bar-axis-%d" % n, xlim=x + 80, ylim=882)
 
 
 
@@ -537,20 +559,20 @@ def spot(buf, x, y, kind, col):
         line(buf, x + 2, y + 60, x + 58, y + 60, col)
 
     elif kind == "chart":
-        text(buf, "-5.06%", x + 22, y + 2, "sans_8", CRISIS,
-             "spot-chart-val", xlim=x + 60, ylim=y + 11)
-        line(buf, x + 4, y + 10, x + 4, y + 58, col)
-        line(buf, x + 4, y + 58, x + 58, y + 58, col)
-        line(buf, x + 6, y + 18, x + 20, y + 30, RED)
-        line(buf, x + 20, y + 30, x + 34, y + 26, RED)
-        line(buf, x + 34, y + 26, x + 54, y + 48, RED)
-        for dx, dy in ((6, 18), (20, 30), (34, 26), (54, 48)):
+        text(buf, "5D", x + 2, y, "serif_15", MID, "spot-chart-title",
+             xlim=x + 24, ylim=y + 18)
+        line(buf, x + 4, y + 18, x + 4, y + 68, col)
+        line(buf, x + 4, y + 68, x + 58, y + 68, col)
+        line(buf, x + 6, y + 26, x + 20, y + 38, RED)
+        line(buf, x + 20, y + 38, x + 34, y + 34, RED)
+        line(buf, x + 34, y + 34, x + 54, y + 54, RED)
+        for dx, dy in ((6, 26), (20, 38), (34, 34), (54, 54)):
             disc(buf, x + dx, y + dy, 2, CREAM)
             disc(buf, x + dx, y + dy, 1, RED)
-        text(buf, "D1", x + 4, y + 58, "sans_8", TEXT, "spot-chart-d1",
-             xlim=x + 18, ylim=y + 67)
-        text(buf, "D5", x + 46, y + 58, "sans_8", TEXT, "spot-chart-d5",
-             xlim=x + 60, ylim=y + 67)
+        ring(buf, x + 54, y + 54, 3, CRISIS)
+        for dx, label in ((4, "D1"), (28, "D3"), (46, "D5")):
+            text(buf, label, x + dx, y + 68, "sans_8", TEXT,
+                 "spot-chart-%s" % label, xlim=x + dx + 14, ylim=y + 77)
 
     elif kind == "tower":
         fill_rect(buf, x + 18, y + 18, 22, 44, PAPER)
@@ -628,8 +650,8 @@ def draw_lead(buf, edge, lead, ncol):
     x, lim = edge
     tx = x
     fill_rect(buf, tx, 176, 96, 2, RED)
-    kw = tw("serifbold_15", lead["kicker"])
-    text(buf, lead["kicker"], tx, 182, "serifbold_15", INK,
+    kw = tw("serif_15", lead["kicker"])
+    text(buf, lead["kicker"], tx, 182, "serif_15", MID,
          "lead-kicker-%d" % ncol, xlim=tx + kw, ylim=200)
     text(buf, lead["place"], tx + kw + 8, 184, "sans_10", TEXT,
          "lead-place-%d" % ncol, xlim=lim, ylim=202)
@@ -672,21 +694,21 @@ def draw_card(buf, x, card, i):
     fill_rect(buf, x, 438, w, 1, RULE)
     lim = x + w - 10
     tx = x + 4
-    art_x = x + w - 70
-    text_x = tx + 144
+    art_x = x + w - 54
+    text_x = tx + 162
     text(buf, card["place"], tx, 447, "sans_10", INK, "card-place-%d" % i,
          xlim=lim, ylim=465)
     text(buf, card["num"], tx, 476, "serifbold_15",
          STATUS_COL[card["status"]], "card-num-%d" % i,
          xlim=text_x, ylim=496)
     spot(buf, art_x, 474, card["art"], INK)
-    lines = wrap("sans_15", card["head"], 144)
+    lines = wrap("serif_15", card["head"], 168)
     if len(lines) > 2:
         audit_fail("card-head-%d" % i, len(lines) - 2)
-    text(buf, lines[0], tx, 516, "sans_15", INK, "card-head-%d-a" % i,
+    text(buf, lines[0], tx, 516, "serif_15", MID, "card-head-%d-a" % i,
          xlim=text_x, ylim=536)
     if len(lines) > 1:
-        text(buf, lines[1], tx, 538, "sans_15", INK, "card-head-%d-b" % i,
+        text(buf, lines[1], tx, 538, "serif_15", MID, "card-head-%d-b" % i,
              xlim=text_x, ylim=558)
     text(buf, card["context"], tx, 566, "sans_10", TEXT,
          "card-context-%d" % i, xlim=lim, ylim=584)
@@ -702,7 +724,7 @@ def draw_card(buf, x, card, i):
 
 
 def draw_briefs(buf):
-    text(buf, "MORE IN BRIEF / 23 NOV", 32, 664, "serifbold_15", RED,
+    text(buf, "MORE IN BRIEF / 23 NOV", 32, 664, "serif_15", MID,
          "briefs-head", xlim=300, ylim=682)
     for i, item in enumerate(BRIEFS[:12]):
         row, col = divmod(i, 3)
@@ -735,7 +757,7 @@ def draw_markets(buf):
     """Compact grounded index strip above the ticker."""
     fill_rect(buf, 28, 942, 664, 44, CARD)
     fill_rect(buf, 28, 942, 664, 1, INK)
-    text(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 942, "serifbold_15", INK,
+    text(buf, "MARKETS / FRI 20 NOV CLOSE", 28, 942, "serif_15", MID,
          "markets-head", xlim=692, ylim=958)
     for i, (label, value, pct, up) in enumerate(TICKER):
         col, row = divmod(i, 3)
@@ -755,7 +777,7 @@ def draw_markets(buf):
 
 def draw_wire(buf):
     """Full-width overflow wire strip between the leads and the cards."""
-    text(buf, "ALSO REPORTED", 32, 390, "serifbold_15", RED, "wire-head",
+    text(buf, "ALSO REPORTED", 32, 390, "serif_15", MID, "wire-head",
          xlim=220, ylim=408)
     for i, x in enumerate((32, 352, 672)):
         item = BRIEFS[15 + i]
@@ -770,26 +792,27 @@ def draw_wire(buf):
 def draw_slope(buf):
     """Friday close to daily move, paired by grounded market rank."""
     ax_l, ax_r = 766, 950
-    text(buf, "CLOSE", 720, 900, "sans_8", TEXT, "slope-axis-l",
-         xlim=ax_l, ylim=910)
-    text(buf, "MOVE", 910, 900, "sans_8", TEXT, "slope-axis-r",
-         xlim=ax_r, ylim=910)
-    line(buf, ax_l, 904, ax_l, 944, AXIS_STRONG)
-    line(buf, ax_r, 904, ax_r, 944, AXIS_STRONG)
+    text(buf, "CLOSE", 720, 886, "sans_8", TEXT, "slope-axis-l",
+         xlim=ax_l, ylim=895)
+    text(buf, "5D LOW", 810, 886, "sans_8", TEXT, "slope-axis-m",
+         xlim=880, ylim=895)
+    text(buf, "MOVE", 910, 886, "sans_8", TEXT, "slope-axis-r",
+         xlim=ax_r, ylim=895)
+    line(buf, ax_l, 896, ax_l, 944, AXIS_STRONG)
+    line(buf, ax_r, 896, ax_r, 944, AXIS_STRONG)
     for i, (value, pct, up, lr, rr) in enumerate(SLOPE):
-        y0, y1 = 908 + lr * 8, 908 + rr * 8
+        y0, y1 = 898 + lr * 10, 898 + rr * 10
         c = GAIN if up else CRISIS
-        line(buf, ax_l + 1, y0 + 4, ax_r - 1, y1 + 4, c)
-        disc(buf, ax_l, y0 + 4, 1, c)
-        disc(buf, ax_r, y1 + 4, 1, c)
+        line(buf, ax_l + 1, y0 + 5, ax_r - 6, y1 + 5, c)
+        disc(buf, ax_l, y0 + 5, 1, c)
+        disc(buf, ax_r, y1 + 5, 1, c)
         text(buf, value, 720, y0, "sans_8", INK, "slope-l-%d" % i,
              xlim=ax_l - 4, ylim=y0 + 9)
         pw = tw("sans_8", pct)
-        text(buf, pct, 986 - pw, y1, "sans_8", c, "slope-r-%d" % i,
-             xlim=986, ylim=y1 + 9)
-    extreme = min(SLOPE, key=lambda row: float(row[1].rstrip("%")))[1]
-    text(buf, "LOW " + extreme, 820, 932, "sans_8", CRISIS,
-         "slope-extreme", xlim=900, ylim=942)
+        text(buf, pct, 988 - pw, y1, "sans_8", c, "slope-r-%d" % i,
+             xlim=988, ylim=y1 + 9)
+    extreme = min(SLOPE, key=lambda row: float(row[1].rstrip("%")))
+    ring(buf, ax_r, 898 + extreme[4] * 10 + 5, 2, CRISIS)
 
 
 def draw_pulse(buf, status):
@@ -797,9 +820,8 @@ def draw_pulse(buf, status):
     market_path(buf)
     ruled_bars(buf, status)
     draw_slope(buf)
-    fill_rect(buf, x, y, w, 1, RULE)
-    text(buf, "MARKET PULSE", x + 8, y + 6, "serifbold_15", INK,
-         "pulse-head", xlim=x + w - 8, ylim=y + 24)
+    text(buf, "MARKET PULSE", x + 8, 868, "serif_15", MID,
+         "pulse-head", xlim=x + w - 8, ylim=884)
     text(buf, "STORY COUNT", 708, 948, "sans_10", INK, "stack-head",
          xlim=860, ylim=966)
     bar_x, bar_w = 800, 186
@@ -821,13 +843,13 @@ def draw_ticker(buf):
     fill_rect(buf, 0, 986, W, 38, INK)
     fill_rect(buf, 0, 990, W, 2, (185, 151, 90))
     text(buf, "US/EU, NIKKEI, GOLD, OIL, BTC, VIX: FRI 20 NOV CLOSE",
-         28, 998, "sans_10", RED_ON, "tick-head", xlim=990, ylim=1016)
+         28, 998, "sans_10", PAPER, "tick-head", xlim=990, ylim=1016)
     for i, (label, value, pct, up) in enumerate(TICKER):
         x = 28 + i * 160
         c = GAIN_ON if up else RED_ON
-        text(buf, label, x, 1010, "sans_10", CREAM, "tick-lab-%d" % i,
+        text(buf, label, x, 1010, "sans_10", PAPER, "tick-lab-%d" % i,
              xlim=x + 54, ylim=1024)
-        text(buf, value, x + 54, 1010, "sans_10", CREAM, "tick-val-%d" % i,
+        text(buf, value, x + 54, 1010, "sans_10", PAPER, "tick-val-%d" % i,
              xlim=x + 106, ylim=1024)
         pw = tw("sans_10", pct)
         arrow(buf, x + 150 - pw, 1013, up, c)
@@ -845,13 +867,16 @@ def main():
         status[item["status"]] = status.get(item["status"], 0) + 1
 
     draw_masthead(buf, n)
-    fill_rect(buf, 0, 162, W, 267, CARD)
+    fill_rect(buf, 28, 162, 968, 267, PAPER)
+    border(buf, 28, 162, 968, 267, RULE)
     draw_lead(buf, (32, 628), LEADS[0], 0)
     draw_lead(buf, (640, 996), LEADS[1], 1)
     draw_lead_briefs(buf)
     draw_wire(buf)
+    fill_rect(buf, 0, 438, W, 202, CARD)
     for i, card in enumerate(CARDS):
         draw_card(buf, 28 + i * 244, card, i)
+    fill_rect(buf, 0, 660, 706, 80, CARD)
     draw_briefs(buf)
     draw_map(buf)
     draw_pulse(buf, status)
@@ -873,6 +898,9 @@ def main():
     print("BRIEF_GAP %d" % BRIEF_GAP)
     print("TRACKING_OVERRIDES %d" % TRACKING_OVERRIDES)
     print("MONO_USES %d" % len(MONO_USES))
+    assert all(WEIGHTS.values()), WEIGHTS
+    print("WEIGHTS primary=%d secondary=%d tertiary=%d"
+          % (WEIGHTS["primary"], WEIGHTS["secondary"], WEIGHTS["tertiary"]))
     print("STORIES=%d REPORTED=%d CLAIMS=%d ONGOING=%d BYTES=%d"
           % (n, status.get("REPORTED", 0), status.get("CLAIM", 0),
              status.get("ONGOING", 0), os.path.getsize(path)))
