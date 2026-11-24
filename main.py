@@ -65,13 +65,15 @@ EDGE_BOXES = []
 EDGE_MAX_X = 0
 EDGE_MAX_Y = 0
 MONO_USES = set()
+FAMILIES = set()
 WEIGHTS = {"primary": 0, "secondary": 0, "tertiary": 0}
 TICKER_LAST_Y = 0
 ALSO_TOP, ALSO_BOT = 392, 420
 MAP_LABEL_GAP = 0
 MAP_LABELS = 0
-MAP_PANEL = (536, 642, 460, 300)
-MX, MY, MW, MH = 542, 670, 448, 212
+MAP_PANEL = (536, 642, 404, 264)
+MX, MY, MW, MH = 542, 670, 394, 184
+DROP_CAP = 0
 BREAKS = {"balanced": 0, "orphans": 0}
 BRIEF_LEAD = 0
 RULE_CLEAR = 0
@@ -269,9 +271,11 @@ def audit_fail(name, over):
 
 def text(buf, s, x, y, key, fg, name, xlim=996, ylim=996, slant=0,
          tracking=0):
-    global TRACK_VARIANTS
+    global TRACK_VARIANTS, FAMILIES
     if not s:
         return 0
+    family = "serif" if key.startswith("serif") else key.split("_", 1)[0]
+    FAMILIES.add(family)
     if tracking not in (0, 1):
         audit_fail(name, tracking)
     if tracking and not (s.upper() == s and any(c.isalpha() for c in s)):
@@ -489,19 +493,20 @@ def draw_map(buf):
     x, y, w, h = MAP_PANEL
     fill_rect(buf, x, y, w, h, PAPER)
     border(buf, x, y, w, h, RULE)
-    border(buf, x + 6, y + 6, w - 12, h - 12, RULE, reg=False)
-    fill_rect(buf, x + 6, y + h - 8, w - 12, 4, TEAL)
+    border(buf, x + 6, y + 6, w - 12, h - 10, RULE, reg=False)
+    fill_rect(buf, x + 6, y + h - 4, w - 12, 1, TEAL)
     text(buf, "WHERE", x + 10, y + 4, "serif_15", MID,
          "map-head", xlim=x + 84, ylim=y + 22)
     text(buf, "SCALE 1:110M", x + w - 92, y + 6, "sans_8", TEXT,
          "map-scale", xlim=x + w - 6, ylim=y + 18)
     fill_rect(buf, x + 6, y + 25, w - 12, 1, RULE)
     world(buf)
-    line(buf, 982, 679, 982, 687, INK)
-    line(buf, 979, 683, 982, 679, INK)
-    line(buf, 985, 683, 982, 679, INK)
-    text(buf, "N", 977, 690, "sans_8", TEXT, "map-north",
-         xlim=990, ylim=700)
+    nx, ny = MX + MW - 10, MY + 9
+    line(buf, nx, ny, nx, ny + 8, INK)
+    line(buf, nx - 3, ny + 4, nx, ny, INK)
+    line(buf, nx + 3, ny + 4, nx, ny, INK)
+    text(buf, "N", nx - 5, ny + 11, "sans_8", TEXT, "map-north",
+         xlim=nx + 7, ylim=ny + 21)
 
     visible = 5
     center = MX + MW // 2
@@ -605,19 +610,19 @@ def draw_map(buf):
 
     fill_rect(buf, MX, MY + MH + 2, MW, 1, RULE)
     for i, (place, num, col) in enumerate(PINS):
-        legend_col = 0 if i < 5 else 1
-        legend_row = i if i < 5 else i - 4
-        cx = MX + 4 + legend_col * 130
+        legend_col = 0 if i < 4 else 1
+        legend_row = i if i < 4 else i - 4
+        cx = MX + 4 + legend_col * 110
         cy = MY + MH + 5 + legend_row * 9
         label = num + " " + place.upper()
         text(buf, label, cx, cy, "sans_8", INK, "legend-pin-%d" % i,
              xlim=cx + 110, ylim=cy + 10)
     for j, item in enumerate(BRIEFS[9:15]):
         place = item["place"].split("/")[-1].strip()
-        label = "%s %s %s %s" % (item["num"], place, item["head"],
-                                 item["source"])
-        cy = MY + MH + 3 + j * 8
-        text(buf, label, MX + 238, cy, "sans_6", TEXT,
+        label = "%s %s %s %s" % (item["num"], place,
+                                 item["head"].split()[0], item["source"])
+        cy = MY + MH + 3 + j * 7
+        text(buf, label, MX + 226, cy, "sans_6", TEXT,
              "legend-brief-%d" % (9 + j), xlim=MX + MW - 2, ylim=cy + 8)
 
 
@@ -755,7 +760,7 @@ def spot(buf, x, y, kind, col):
         line(buf, x + 2, y + 60, x + 58, y + 60, col)
 
     elif kind == "chart":
-        text(buf, "5D", x + 2, y, "serif_15", MID, "spot-chart-title",
+        text(buf, "5D", x + 2, y, "sans_12", MID, "spot-chart-title",
              xlim=x + 24, ylim=y + 18)
         line(buf, x + 4, y + 18, x + 4, y + 68, col)
         line(buf, x + 4, y + 68, x + 58, y + 68, col)
@@ -826,12 +831,12 @@ def draw_masthead(buf, n):
     text(buf, "reported Monday 23 November 2026", 34, 120,
          "serifbold_15", CREAM, "dateline", xlim=400, slant=6)
     mx = 660
-    text(buf, str(n), mx, 44, "serifbold_24", RED_ON, "mast-n",
+    text(buf, str(n), mx, 44, "sans_15", RED_ON, "mast-n",
          xlim=mx + 32, ylim=72)
     text(buf, "STORIES", mx + 36, 52, "sans_10", CREAM, "mast-stories",
          xlim=mx + 106, ylim=72)
     fill_rect(buf, mx + 110, 44, 1, 24, RULE)
-    text(buf, "6", mx + 126, 44, "serifbold_24", RED_ON, "mast-sources",
+    text(buf, "6", mx + 126, 44, "sans_15", RED_ON, "mast-sources",
          xlim=mx + 156, ylim=72)
     text(buf, "SOURCES", mx + 160, 52, "sans_10", CREAM, "mast-source-label",
          xlim=mx + 240, ylim=72)
@@ -846,16 +851,16 @@ def draw_masthead(buf, n):
 def draw_lead(buf, edge, lead, ncol):
     x, lim = edge
     if ncol == 0:
-        tx, head_lim = 56, 600
+        tx, head_lim = 56, 616
         body_y, detail_y, foot_y = 286, 330, 350
-        body_cols, body_w = (56, 336), 268
-        fill_rect(buf, 52, 186, 552, 182, PAPER)
+        body_w = 560
+        fill_rect(buf, 52, 186, 568, 182, PAPER)
         fill_rect(buf, tx, 186, 184, 3, CRISIS)
         kicker_y, place_y = 191, 193
     else:
         tx, head_lim = x, lim
         body_y, detail_y, foot_y = 286, 340, 358
-        body_cols, body_w = (tx,), lim - tx - 12
+        body_w = lim - tx - 12
         fill_rect(buf, tx, 176, 96, 1, RULE)
         kicker_y, place_y = 182, 184
     kw = tw("serif_15", lead["kicker"]) + len(lead["kicker"]) - 1
@@ -871,29 +876,14 @@ def draw_lead(buf, edge, lead, ncol):
         text(buf, ln, tx, 202 + j * 44, "serifbold_34", INK,
              "lead-head-%d-%d" % (ncol, j), xlim=head_lim,
              ylim=246 + j * 44 + 44)
-    if ncol == 0:
-        first, second = lead["context"].split(". ", 1)
-        parts = (first + ".", second)
-    else:
-        parts = (lead["context"],)
-    for col, (px, part) in enumerate(zip(body_cols, parts)):
-        drop = ncol == 0 and col == 0
-        source = part[1:] if drop else part
-        width = body_w - 28 if drop else body_w
-        body_lines = (balanced_wrap("sans_10", source, width) if drop
-                      else wrap("sans_10", source, width))
-        if len(body_lines) > 3:
-            audit_fail("lead-body-%d-%d" % (ncol, col),
-                       len(body_lines) - 3)
-        if drop:
-            text(buf, part[0], px, body_y - 2, "serifbold_30", INK,
-                 "lead-drop-%d" % ncol, xlim=px + 28, ylim=body_y + 40)
-        for j, ln in enumerate(body_lines):
-            bx = px + (28 if drop and j < 2 else 0)
-            ly = body_y + j * 14
-            text(buf, ln, bx, ly, "sans_10", TEXT,
-                 "lead-body-%d-%d-%d" % (ncol, col, j),
-                 xlim=bx + width + 4, ylim=ly + 14)
+    body_lines = wrap("serif_10", lead["context"], body_w)
+    if len(body_lines) > 3:
+        audit_fail("lead-body-%d" % ncol, len(body_lines) - 3)
+    for j, ln in enumerate(body_lines):
+        ly = body_y + j * 14
+        text(buf, ln, tx, ly, "serif_10", TEXT,
+             "lead-body-%d-%d" % (ncol, j),
+             xlim=tx + body_w + 4, ylim=ly + 14)
     text(buf, lead["detail"], tx, detail_y, "sans_10", TEXT,
          "lead-detail-%d" % ncol, xlim=head_lim, ylim=detail_y + 14)
     chip(buf, tx, foot_y, STATUS_COL[lead["status"]])
@@ -960,7 +950,7 @@ def draw_briefs(buf):
         detail_lines.append(current)
         assert len(detail_lines) <= 2, detail_lines
         lines = [(item["place"], "sans_8", INK),
-                 (item["head"], "sans_8", MID)]
+                 (item["head"], "serif_8", MID)]
         lines += [(s, "sans_8", TEXT) for s in detail_lines]
         top, bot = 1024, 0
         for ln, (s, key, fg) in enumerate(lines):
@@ -1007,13 +997,15 @@ def draw_wire(buf):
     fill_rect(buf, 28, ALSO_TOP, 968, 1, RULE)
     for i in range(3):
         item = BRIEFS[15 + i]
-        y = ALSO_TOP + 4 + i * 8
+        y = ALSO_TOP + 2 + i * 9
         nw = tw("sans_6", item["num"])
         text(buf, item["num"], 50 - nw, y, "sans_6", TEXT,
              "wire-val-%d" % (15 + i), xlim=50, ylim=y + 8)
-        s = "%s %s · %s · %s" % (item["place"], item["head"],
-                                 item["context"], item["source"])
-        text(buf, s, 54, y, "sans_6", TEXT,
+        hw = tw("serif_8", item["head"])
+        text(buf, item["head"], 54, y, "serif_8", INK,
+             "wire-head-%d" % (15 + i), xlim=54 + hw, ylim=y + 10)
+        s = "%s · %s · %s" % (item["num"], item["context"], item["source"])
+        text(buf, s, 60 + hw, y, "sans_6", TEXT,
              "wire-%d" % (15 + i), xlim=996, ylim=y + 8)
 
 
@@ -1074,6 +1066,8 @@ def main():
     draw_pulse(buf, status)
     draw_markets(buf)
     draw_ticker(buf)
+    assert DROP_CAP == 0, DROP_CAP
+    assert FAMILIES == {"serif", "sans"}, FAMILIES
     assert SCALE_LEAD / SCALE_BODY >= 3.0, (SCALE_LEAD, SCALE_BODY)
     assert ORPHANS == 0, ORPHANS
     assert TRACK_VARIANTS <= 2, TRACK_VARIANTS
@@ -1106,6 +1100,9 @@ def main():
     print("TRACK_VARIANTS %d" % TRACK_VARIANTS)
     print("SECTION_GAP %d" % SECTION_GAP)
     print("PRE_TICKER_GAP %d" % PRE_TICKER_GAP)
+    print("FAMILIES %d" % len(FAMILIES))
+    print("MAP_W %d MAP_H %d" % (MAP_PANEL[2], MAP_PANEL[3]))
+    print("DROP_CAP %d" % DROP_CAP)
     print("RULE_CLEAR %d" % RULE_CLEAR)
     print("TRACKING_OVERRIDES %d" % TRACKING_OVERRIDES)
     print("MONO_USES %d" % len(MONO_USES))
